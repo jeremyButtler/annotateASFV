@@ -1,0 +1,17 @@
+Program	test	elapsedTime	userTime	systemTime	maxResidentMemory	CPU
+Command terminated by signal 11
+bio-align	ramKiller	small	hb	1.64	1.62	0.01	14160	99%
+Command terminated by signal 11
+bio-align	ramKiller	small	hb	1.70	1.69	0.00	14148	99%
+Command terminated by signal 11
+bio-align	ramKiller	small	hb	1.64	1.63	0.01	14164	99%
+Command terminated by signal 11
+bio-align	ramKiller	small	hb	1.64	1.64	0.00	14200	100%
+Command terminated by signal 11
+bio-align	ramKiller	mid	hb	10.24	10.23	0.00	16512	99%
+Command terminated by signal 11
+bio-align	ramKiller	mid	hb	10.28	10.23	0.03	16508	99%
+Command terminated by signal 11
+bio-align	ramKiller	mid	hb	10.27	10.27	0.00	16508	100%
+Command terminated by signal 11
+bio-align	ramKiller	mid	hb	10.24	10.24	0.00	16516	99%
