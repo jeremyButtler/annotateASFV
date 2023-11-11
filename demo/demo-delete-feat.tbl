@@ -1,8 +1,7 @@
 >Feature	OP605386.1 African swine fever virus isolate 20355/RM/2022_Italy, complete genome
-189212	190590	gene	ALT-FIX
-			gene	inverted-repeat
-190590	189212	CDS	ALT-FIX
-			product	inverted-repeat
+189212	190590	repeat_region	ALT-FIX
+			rpt_type	inverted
+			rpt_type	terminal
 1	1379	repeat_region
 			rpt_type	inverted
 			rpt_type	terminal
@@ -786,10 +785,9 @@
 			gene	MGF 360 21R
 187983	189053	CDS
 			product	MGF 360 21R
-189212	190590	gene	ALT-FIX
-			gene	inverted-repeat
-190590	189212	CDS	ALT-FIX
-			product	inverted-repeat
+189212	190590	repeat_region	ALT-FIX
+			rpt_type	inverted
+			rpt_type	terminal
 1	1379	repeat_region
 			rpt_type	inverted
 			rpt_type	terminal

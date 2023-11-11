@@ -93,9 +93,11 @@ Warning alnSeq will run out of memory if you leave the full
   twice as long, but it will only take 9 Gb instead of
   40 Gb to align two complete ASFV genomes. The better
   option is just to make sure the full ASFV genome from the
-  Genbank file is removed. The longest gene is under 10000
-  bases, so, this should use under 20 Gb of ram to align
-  a gene to a full ASFV genome.
+  Genbank file is removed. The 7000 base CP2475L gene takes
+  around 1.4 Gb of ram to map to the full ASFV genome. So,
+  this program should use less than 2 Gb of ram to map each
+  genes to the ASFV genome.
+
   
 After I extract the features I use rmDupFeatures.awk
   `awk -f rmDupFeatures.awk features.fasta > cleaned.fasta`
@@ -120,7 +122,8 @@ The prefix-scores.tsv file has a table of the main
   `cat demo/demo-delete-scores.tsv | psc | sc`. It has the
   same key bindings as less; q to quite, page up ctrl-b to
   move down a page, page down or ctrl-f to move down a
-  page, and arrow keys or hjkl to move up/down/left/right.
+  page, and arrow keys or k/j/h/l to move
+  up/down/left/right.
 
 As you can see the repeat regions are a bit messy and map
   to both ends of the genome.

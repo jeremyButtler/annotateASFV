@@ -8,11 +8,11 @@ COREFLAGS=\
   -Wall\
   --std=c99 \
   -static\
-  -O3
-
+  -O3\
 # These are here for the user to overwrite
 #CFLAGS=-DBLANK
-CFLAGS=-DBLANK
+CFLAGS=-DDELINSSNP
+
 
 DEBUGFLAGS=\
    -DNOSEQCNVT\
