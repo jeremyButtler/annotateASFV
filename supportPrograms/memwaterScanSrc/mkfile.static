@@ -1,0 +1,101 @@
+
+CC=cc
+LD=cc
+coreCFLAGS= -O3 -std=c89 -static -Wall -Wextra -Wpedantic -Wundef -Waggregate-return -Wwrite-strings -Wstrict-prototypes -Wpointer-arith -Wshadow -Wunreachable-code -Winit-self -c
+CFLAGS=-DNONE
+NAME=memwaterScan
+PREFIX=/usr/local/bin
+O=o.static
+
+genAln=../genAln
+genLib=../genLib
+genBio=../genBio
+
+objFiles= \
+   $(genAln)/memwaterScan.$O \
+   $(genLib)/base10str.$O \
+   $(genLib)/ulCp.$O \
+   $(genAln)/alnSet.$O \
+   $(genLib)/fileFun.$O \
+   $(genAln)/indexToCoord.$O \
+   $(genBio)/seqST.$O \
+   mainMemwaterScan.$O
+
+$(NAME): mainMemwaterScan.$O
+	$(LD) -o $(NAME) $(objFiles)
+
+mainMemwaterScan.$O: \
+	mainMemwaterScan.c \
+	$(genAln)/memwaterScan.$O \
+	$(genLib)/base10str.$O \
+	$(genLib)/ulCp.$O \
+	../bioTools.h
+		$(CC) -o mainMemwaterScan.$O \
+			$(CFLAGS) $(coreCFLAGS) mainMemwaterScan.c
+
+$(genAln)/memwaterScan.$O: \
+	$(genAln)/memwaterScan.c \
+	$(genAln)/memwaterScan.h \
+	$(genAln)/alnSet.$O \
+	$(genAln)/indexToCoord.$O \
+	$(genBio)/seqST.$O \
+	$(genLib)/genMath.h
+		$(CC) -o $(genAln)/memwaterScan.$O \
+			$(CFLAGS) $(coreCFLAGS) \
+			$(genAln)/memwaterScan.c
+
+$(genLib)/base10str.$O: \
+	$(genLib)/base10str.c \
+	$(genLib)/base10str.h
+		$(CC) -o $(genLib)/base10str.$O \
+			$(CFLAGS) $(coreCFLAGS) \
+			$(genLib)/base10str.c
+
+$(genLib)/ulCp.$O: \
+	$(genLib)/ulCp.c \
+	$(genLib)/ulCp.h
+		$(CC) -o $(genLib)/ulCp.$O \
+			$(CFLAGS) $(coreCFLAGS) \
+			$(genLib)/ulCp.c
+
+$(genAln)/alnSet.$O: \
+	$(genAln)/alnSet.c \
+	$(genAln)/alnDefs.h \
+	$(genLib)/fileFun.$O \
+	$(genLib)/ulCp.$O \
+	$(genLib)/base10str.$O \
+	$(genAln)/alnDefs.h \
+	$(genLib)/endLine.h
+		$(CC) -o $(genAln)/alnSet.$O \
+			$(CFLAGS) $(coreCFLAGS) \
+			$(genAln)/alnSet.c
+
+$(genLib)/fileFun.$O: \
+	$(genLib)/fileFun.c \
+	$(genLib)/fileFun.h \
+	$(genLib)/ulCp.$O
+		$(CC) -o $(genLib)/fileFun.$O \
+			$(CFLAGS) $(coreCFLAGS) \
+			$(genLib)/fileFun.c
+
+$(genAln)/indexToCoord.$O: \
+	$(genAln)/indexToCoord.c \
+	$(genAln)/indexToCoord.h
+		$(CC) -o $(genAln)/indexToCoord.$O \
+			$(CFLAGS) $(coreCFLAGS) \
+			$(genAln)/indexToCoord.c
+
+$(genBio)/seqST.$O: \
+	$(genBio)/seqST.c \
+	$(genBio)/seqST.h \
+	$(genLib)/fileFun.$O
+		$(CC) -o $(genBio)/seqST.$O \
+			$(CFLAGS) $(coreCFLAGS) \
+			$(genBio)/seqST.c
+
+install:
+	mv $(NAME) $(PREFIX)
+	chmod a+x $(PREFIX)/$(NAME)
+
+clean:
+	rm $(objFiles)

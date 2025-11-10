@@ -1,0 +1,4 @@
+b mainCigToEqx.c:889
+
+#r -sam test.sam -ref /usr/local/share/freezeTBFiles/NC000962.fa
+r -sam del-read.sam -ref del-ref.fa

@@ -1,0 +1,114 @@
+
+CC=cl.exe
+LD=link.exe
+coreCFLAGS= /c /O2 /Ot /Za /Tc
+CFLAGS=/DNONE
+NAME=cigToEqx.exe
+PREFIX="%localAppData%"
+O=o.win
+
+genBio=..\genBio
+genLib=..\genLib
+
+objFiles= \
+   $(genBio)\cigToEqx.$O \
+   $(genBio)\seqST.$O \
+   $(genLib)\charCp.$O \
+   $(genBio)\samEntry.$O \
+   $(genLib)\fileFun.$O \
+   $(genLib)\ulCp.$O \
+   $(genLib)\strAry.$O \
+   $(genLib)\numToStr.$O \
+   $(genLib)\base10str.$O \
+   mainCigToEqx.$O
+
+$(NAME): mainCigToEqx.$O
+	$(LD) /out:$(NAME) $(objFiles)
+
+mainCigToEqx.$O: \
+	mainCigToEqx.c \
+	$(genBio)\cigToEqx.$O \
+	$(genBio)\seqST.$O \
+	$(genLib)\charCp.$O \
+	../bioTools.h \
+	../genLib/endLine.h
+		$(CC) /Fo:mainCigToEqx.$O \
+			$(CFLAGS) $(coreCFLAGS) mainCigToEqx.c
+
+$(genBio)\cigToEqx.$O: \
+	$(genBio)\cigToEqx.c \
+	$(genBio)\cigToEqx.h \
+	$(genBio)\samEntry.$O
+		$(CC) /Fo:$(genBio)\cigToEqx.$O \
+			$(CFLAGS) $(coreCFLAGS) \
+			$(genBio)\cigToEqx.c
+
+$(genBio)\seqST.$O: \
+	$(genBio)\seqST.c \
+	$(genBio)\seqST.h \
+	$(genLib)\fileFun.$O
+		$(CC) /Fo:$(genBio)\seqST.$O \
+			$(CFLAGS) $(coreCFLAGS) \
+			$(genBio)\seqST.c
+
+$(genLib)\charCp.$O: \
+	$(genLib)\charCp.c \
+	$(genLib)\charCp.h
+		$(CC) /Fo:$(genLib)\charCp.$O \
+			$(CFLAGS) $(coreCFLAGS) \
+			$(genLib)\charCp.c
+
+$(genBio)\samEntry.$O: \
+	$(genBio)\samEntry.c 	$(genBio)\samEntry.h \
+	$(genLib)\fileFun.$O \
+	$(genLib)\strAry.$O \
+	$(genLib)\base10str.$O \
+	$(genLib)\numToStr.$O \
+	$(genBio)\ntTo5Bit.h \
+	$(genLib)\endLine.h
+		$(CC) /Fo:$(genBio)\samEntry.$O \
+			$(CFLAGS) $(coreCFLAGS) \
+			$(genBio)\samEntry.c
+
+$(genLib)\fileFun.$O: \
+	$(genLib)\fileFun.c \
+	$(genLib)\fileFun.h \
+	$(genLib)\ulCp.$O
+		$(CC) /Fo:$(genLib)\fileFun.$O \
+			$(CFLAGS) $(coreCFLAGS) \
+			$(genLib)\fileFun.c
+
+$(genLib)\ulCp.$O: \
+	$(genLib)\ulCp.c \
+	$(genLib)\ulCp.h
+		$(CC) /Fo:$(genLib)\ulCp.$O \
+			$(CFLAGS) $(coreCFLAGS) \
+			$(genLib)\ulCp.c
+
+$(genLib)\strAry.$O: \
+	$(genLib)\strAry.c \
+	$(genLib)\strAry.h \
+	$(genLib)\ulCp.$O
+		$(CC) /Fo:$(genLib)\strAry.$O \
+			$(CFLAGS) $(coreCFLAGS) \
+			$(genLib)\strAry.c
+
+$(genLib)\numToStr.$O: \
+	$(genLib)\numToStr.c \
+	$(genLib)\numToStr.h
+		$(CC) /Fo:$(genLib)\numToStr.$O \
+			$(CFLAGS) $(coreCFLAGS) \
+			$(genLib)\numToStr.c
+
+$(genLib)\base10str.$O: \
+	$(genLib)\base10str.c \
+	$(genLib)\base10str.h
+		$(CC) /Fo:$(genLib)\base10str.$O \
+			$(CFLAGS) $(coreCFLAGS) \
+			$(genLib)\base10str.c
+
+install:
+	move $(NAME) $(PREFIX)
+
+clean:
+	del $(objFiles)

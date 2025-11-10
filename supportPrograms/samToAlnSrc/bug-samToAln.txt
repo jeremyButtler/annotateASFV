@@ -1,0 +1,5 @@
+b samToAlnMain.c:752
+b samToAln.c:787
+
+#r -ref ../freezeTBFiles/NC000962.fa -sam $HOME/BC02.sam
+r -ref PA-blast.fa -sam test.sam -mask

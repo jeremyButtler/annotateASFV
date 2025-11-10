@@ -1,0 +1,55 @@
+</$objtype/mkfile
+coreCFLAGS=-DPLAN9
+CFLAGS=-DNONE
+NAME=revCmp
+PREFIX=$home/bin
+
+genBio=../genBio
+genLib=../genLib
+
+objFiles= \
+   $genBio/seqST.$O \
+   $genLib/fileFun.$O \
+   $genLib/ulCp.$O \
+   revCmp.$O
+
+$(NAME): revCmp.$O
+	$LD -o $NAME $objFiles
+
+revCmp.$O: \
+	revCmp.c \
+	$genBio/seqST.$O \
+	../bioTools.h \
+	../genLib/endLine.h
+		$CC -o revCmp.$O \
+			$CFLAGS $coreCFLAGS revCmp.c
+
+$genBio/seqST.$O: \
+	$genBio/seqST.c \
+	$genBio/seqST.h \
+	$genLib/fileFun.$O
+		$CC -o $genBio/seqST.$O \
+			$CFLAGS $coreCFLAGS \
+			$genBio/seqST.c
+
+$genLib/fileFun.$O: \
+	$genLib/fileFun.c \
+	$genLib/fileFun.h \
+	$genLib/ulCp.$O
+		$CC -o $genLib/fileFun.$O \
+			$CFLAGS $coreCFLAGS \
+			$genLib/fileFun.c
+
+$genLib/ulCp.$O: \
+	$genLib/ulCp.c \
+	$genLib/ulCp.h
+		$CC -o $genLib/ulCp.$O \
+			$CFLAGS $coreCFLAGS \
+			$genLib/ulCp.c
+
+install:
+	mv $(NAME) $(PREFIX)
+	chmod a+x $(PREFIX)/$(NAME)
+
+clean:
+	rm $(objFiles)

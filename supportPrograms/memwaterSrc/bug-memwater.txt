@@ -1,0 +1,3 @@
+b alnMemwater.c:1184
+
+r -ref $HOME/files/testing/PA-ref.fa -qry del.fa

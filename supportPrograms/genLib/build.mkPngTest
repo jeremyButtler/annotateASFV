@@ -1,0 +1,4 @@
+coreCFLAGS= -O0 -std=c89 -g -Werror -Wall -Wextra -Wpedantic -Wundef -Waggregate-return -Wwrite-strings -Wstrict-prototypes -Wcast-align -Wpointer-arith -Wshadow -Wunreachable-code -Winit-self
+
+all:
+	gcc $(coreCFLAGS) -o test test.c mkPng.c checkSum.c endin.c

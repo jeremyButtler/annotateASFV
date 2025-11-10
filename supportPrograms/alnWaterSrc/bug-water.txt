@@ -1,0 +1,5 @@
+b alnwater.c:1115
+
+#r -ref ref.fa -qry qry.fa
+#r -ref /home/reason/files/testing/PA-ref.fa -qry /home/reason/files/testing/PA-qry.fa
+r -ref ../../freezeTBFiles/NC000962.fa -qry ../../freezeTBFiles/spoligotype-seq.fa

@@ -1,0 +1,127 @@
+</$objtype/mkfile
+coreCFLAGS=-DPLAN9
+CFLAGS=-DNONE
+NAME=samToAln
+PREFIX=$home/bin
+
+genAln=../genAln
+genLib=../genLib
+genBio=../genBio
+
+objFiles= \
+   $genAln/samToAln.$O \
+   $genLib/charCp.$O \
+   $genAln/alnSet.$O \
+   $genLib/base10str.$O \
+   $genLib/fileFun.$O \
+   $genLib/ulCp.$O \
+   $genBio/samEntry.$O \
+   $genLib/strAry.$O \
+   $genLib/numToStr.$O \
+   $genBio/seqST.$O \
+   mainSamToAln.$O
+
+$(NAME): mainSamToAln.$O
+	$LD -o $NAME $objFiles
+
+mainSamToAln.$O: \
+	mainSamToAln.c \
+	$genAln/samToAln.$O \
+	$genLib/charCp.$O \
+	../bioTools.h \
+	../genLib/endLine.h
+		$CC -o mainSamToAln.$O \
+			$CFLAGS $coreCFLAGS mainSamToAln.c
+
+$genAln/samToAln.$O: \
+	$genAln/samToAln.c \
+	$genAln/samToAln.h \
+	$genBio/samEntry.$O \
+	$genBio/seqST.$O \
+	$genAln/alnSet.$O
+		$CC -o $genAln/samToAln.$O \
+			$CFLAGS $coreCFLAGS \
+			$genAln/samToAln.c
+
+$genLib/charCp.$O: \
+	$genLib/charCp.c \
+	$genLib/charCp.h
+		$CC -o $genLib/charCp.$O \
+			$CFLAGS $coreCFLAGS \
+			$genLib/charCp.c
+
+$genAln/alnSet.$O: \
+	$genAln/alnSet.c \
+	$genAln/alnDefs.h \
+	$genLib/fileFun.$O \
+	$genLib/ulCp.$O \
+	$genLib/base10str.$O \
+	$genAln/alnDefs.h \
+	$genLib/endLine.h
+		$CC -o $genAln/alnSet.$O \
+			$CFLAGS $coreCFLAGS \
+			$genAln/alnSet.c
+
+$genLib/base10str.$O: \
+	$genLib/base10str.c \
+	$genLib/base10str.h
+		$CC -o $genLib/base10str.$O \
+			$CFLAGS $coreCFLAGS \
+			$genLib/base10str.c
+
+$genLib/fileFun.$O: \
+	$genLib/fileFun.c \
+	$genLib/fileFun.h \
+	$genLib/ulCp.$O
+		$CC -o $genLib/fileFun.$O \
+			$CFLAGS $coreCFLAGS \
+			$genLib/fileFun.c
+
+$genLib/ulCp.$O: \
+	$genLib/ulCp.c \
+	$genLib/ulCp.h
+		$CC -o $genLib/ulCp.$O \
+			$CFLAGS $coreCFLAGS \
+			$genLib/ulCp.c
+
+$genBio/samEntry.$O: \
+	$genBio/samEntry.c 	$genBio/samEntry.h \
+	$genLib/fileFun.$O \
+	$genLib/strAry.$O \
+	$genLib/base10str.$O \
+	$genLib/numToStr.$O \
+	$genBio/ntTo5Bit.h \
+	$genLib/endLine.h
+		$CC -o $genBio/samEntry.$O \
+			$CFLAGS $coreCFLAGS \
+			$genBio/samEntry.c
+
+$genLib/strAry.$O: \
+	$genLib/strAry.c \
+	$genLib/strAry.h \
+	$genLib/ulCp.$O
+		$CC -o $genLib/strAry.$O \
+			$CFLAGS $coreCFLAGS \
+			$genLib/strAry.c
+
+$genLib/numToStr.$O: \
+	$genLib/numToStr.c \
+	$genLib/numToStr.h
+		$CC -o $genLib/numToStr.$O \
+			$CFLAGS $coreCFLAGS \
+			$genLib/numToStr.c
+
+$genBio/seqST.$O: \
+	$genBio/seqST.c \
+	$genBio/seqST.h \
+	$genLib/fileFun.$O
+		$CC -o $genBio/seqST.$O \
+			$CFLAGS $coreCFLAGS \
+			$genBio/seqST.c
+
+install:
+	mv $(NAME) $(PREFIX)
+	chmod a+x $(PREFIX)/$(NAME)
+
+clean:
+	rm $(objFiles)

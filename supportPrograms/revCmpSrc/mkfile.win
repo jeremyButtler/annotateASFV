@@ -1,0 +1,57 @@
+
+CC=cl.exe
+LD=link.exe
+coreCFLAGS= /c /O2 /Ot /Za /Tc
+CFLAGS=/DNONE
+NAME=revCmp.exe
+PREFIX="%localAppData%"
+O=o.win
+
+genBio=..\genBio
+genLib=..\genLib
+
+objFiles= \
+   $(genBio)\seqST.$O \
+   $(genLib)\fileFun.$O \
+   $(genLib)\ulCp.$O \
+   revCmp.$O
+
+$(NAME): revCmp.$O
+	$(LD) /out:$(NAME) $(objFiles)
+
+revCmp.$O: \
+	revCmp.c \
+	$(genBio)\seqST.$O \
+	../bioTools.h \
+	../genLib/endLine.h
+		$(CC) /Fo:revCmp.$O \
+			$(CFLAGS) $(coreCFLAGS) revCmp.c
+
+$(genBio)\seqST.$O: \
+	$(genBio)\seqST.c \
+	$(genBio)\seqST.h \
+	$(genLib)\fileFun.$O
+		$(CC) /Fo:$(genBio)\seqST.$O \
+			$(CFLAGS) $(coreCFLAGS) \
+			$(genBio)\seqST.c
+
+$(genLib)\fileFun.$O: \
+	$(genLib)\fileFun.c \
+	$(genLib)\fileFun.h \
+	$(genLib)\ulCp.$O
+		$(CC) /Fo:$(genLib)\fileFun.$O \
+			$(CFLAGS) $(coreCFLAGS) \
+			$(genLib)\fileFun.c
+
+$(genLib)\ulCp.$O: \
+	$(genLib)\ulCp.c \
+	$(genLib)\ulCp.h
+		$(CC) /Fo:$(genLib)\ulCp.$O \
+			$(CFLAGS) $(coreCFLAGS) \
+			$(genLib)\ulCp.c
+
+install:
+	move $(NAME) $(PREFIX)
+
+clean:
+	del $(objFiles)

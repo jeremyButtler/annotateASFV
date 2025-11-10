@@ -1,0 +1,28 @@
+CC=cc
+LD=cc
+CFLAGS=-DNONE
+PREFIX=/usr/local/bin
+O=o.unix
+
+all:
+	make CFLAGS="$(CFLAGS)" O=$O -f mkfile.unix -C alnNeedleSrc;
+	make CFLAGS="$(CFLAGS)" O=$O -f mkfile.unix -C alnWaterSrc;
+	make CFLAGS="$(CFLAGS)" O=$O -f mkfile.unix -C cigToEqxSrc;
+	make CFLAGS="$(CFLAGS)" O=$O -f mkfile.unix -C memwaterSrc;
+	make CFLAGS="$(CFLAGS)" O=$O -f mkfile.unix -C memwaterScanSrc;
+	make CFLAGS="$(CFLAGS)" O=$O -f mkfile.unix -C revCmpSrc;
+	make CFLAGS="$(CFLAGS)" O=$O -f mkfile.unix -C samToAlnSrc;
+	make CFLAGS="$(CFLAGS)" O=$O -f mkfile.unix -C tranSeqSrc;
+
+install:
+	make CFLAGS="$(CFLAGS)" O=$O -f mkfile.unix -C alnNeedleSrc install;
+	make CFLAGS="$(CFLAGS)" O=$O -f mkfile.unix -C alnWaterSrc install;
+	make CFLAGS="$(CFLAGS)" O=$O -f mkfile.unix -C cigToEqxSrc install;
+	make CFLAGS="$(CFLAGS)" O=$O -f mkfile.unix -C memwaterSrc install;
+	make CFLAGS="$(CFLAGS)" O=$O -f mkfile.unix -C memwaterScanSrc install;
+	make CFLAGS="$(CFLAGS)" O=$O -f mkfile.unix -C revCmpSrc install;
+	make CFLAGS="$(CFLAGS)" O=$O -f mkfile.unix -C samToAlnSrc install;
+	make CFLAGS="$(CFLAGS)" O=$O -f mkfile.unix -C tranSeqSrc install;
+
+clean:
+	rm */*.$O

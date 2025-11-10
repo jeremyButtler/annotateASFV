@@ -1,4 +1,15 @@
 all:
-	make -C alnSeqSrc && mv alnSeqSrc/alnSeq alnSeq;
-	make -C alnSeqSrc CFLAGS="-DDELINSSNP" && mv alnSeqSrc/alnSeq alnSeqMem;
-	make -C alnSeqSrc/20230908-alnSeq/ && mv alnSeqSrc/20230908-alnSeq/alnSeq alnSeqScan;
+	if [ ! -d "$$(pwd)/bin" ]; then mkdir "$$(pwd)/bin";fi;
+	make -f mkfile.unix -C supportPrograms;
+	make -f mkfile.unix -C supportPrograms \
+		PREFIX="$$(pwd)/bin" install;
+	cp scripts/annotateASFV.sh bin;
+	cp scripts/mapGene.sh bin;
+	cp scripts/aaToFeature.awk bin;
+	cp scripts/extractSeqByScore.awk bin;
+	cp scripts/rmDupFeatures.awk bin;
+clean:
+	make -f mkfile.unix -C supportPrograms clean;
+cleanAll:
+	if [ -d "$$(pwd)/bin" ]; then rm -r "$$(pwd)/bin"; fi;
+	make -f mkfile.unix -C supportPrograms clean;

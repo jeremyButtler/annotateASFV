@@ -1,5 +1,0 @@
-Gene	Error	geneDirection	GeneStart	GeneEnd	ErrorBase	ErrorEnd
-ASFV-G-ACD-00190	no-start-codon	Reverse	12580	12455	NA	NA
-ASFV-G-ACD-00270	no-start-codon	Reverse	16164	16051	NA	NA
-ASFV-G-ACD-00350	no-start-codon	Forward	19962	20093	NA	NA
-ASFV-G-ACD-01870	no-start-codon	Forward	182609	182746	NA	NA
