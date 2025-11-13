@@ -16,10 +16,10 @@
 '       - make ulong_ulCp delimintor from character
 '     o .h fun03: ifDelim_ulCp
 '       - check if have deliminator in long
-'     o .h fun04: ifNullDelim_ulCp
-'       - checks for null or deliminator in ulong_ulCp
-'     o .h fun05: ifNull_ulCp
+'     o .h fu04: ifNull_ulCp
 '       - checks to see if null in ulong_ulCp
+'     o .h fu05: ifNullDelim_ulCp
+'       - checks for null or deliminator in ulong_ulCp
 '     o .h fun06: ifLineUnix_ulCp
 '       - checks if unix line end ('\n' or '\0')
 '     o .h fun07: ifEndLine_ulCp
@@ -27,52 +27,58 @@
 '     o .h fun08: ifWhite_ulCp
 '       - check if input long has white space
 '         (' ', '\r', '\n', '\t', '\0')
+'     o fun09: ifWhiteDelim_ulCp
+'       - check if input long has deliminator or white
+'         space (' ', '\r', '\n', '\t', '\0')
 '   String copying:
-'     o fun09: cpLen_ulCp
+'     o fun10: cpLen_ulCp
 '       - copies cpStr into dupStr using ulong_ulCps
-'     o fun10: cpDelim_ulCp
+'     o fun11: cpDelim_ulCp
 '       - copies string until deliminator is found
-'     o fun11: cpStr_ulCp
+'     o fun12: cpStr_ulCp
 '       - copies string until \0
-'     o fun12: cpLineUnix_ulCp
+'     o fun13: cpLineUnix_ulCp
 '       - copies string until end of line (\0, \n)
-'     o fun13: cpLine_ulCp
+'     o fun14: cpLine_ulCp
 '       - copies string until end of line (\0, \r, \n)
 '       - ingores unused ascii characters (> 32, not '\t')
-'     o fun14: cpWhite_ulCp
+'     o fun15: cpWhite_ulCp
 '       - copies string until white space
 '   String length:
-'     o fun15: lenStr_ulCp
+'     o fun16: lenStr_ulCp
 '       - finds the length of a string using ulong_ulCps
-'     o fun16: lenStrNull_ulCp
+'     o fun17: lenStrNull_ulCp
 '       - finds the length of a string using ulong_ulCps
 '         but also stops at null '\0'
-'     o fun17: endStr_ulCp
+'     o fun18: endStr_ulCp
 '       - finds the end of a c-string ('\0')
-'     o fun18: endLineUnix_ulCp
+'     o fun19: endLineUnix_ulCp
 '      - finds the end of a c-string. This assumes that
 '        the line ends in '\0' or '\n'
-'     o fun19: endLine_ulCp
+'     o fun20: endLine_ulCp
 '       - finds the end of a c-string (all OS's; looks for
 '         '\0', '\n', and '\r')
-'     o fun20: endWhite_ulCp
+'     o fun21: endWhite_ulCp
 '       - finds 1st white space ('\t',' ','\n','\0','\r')
+'     o fun22: endWhiteDelim_ulCp
+'      - finds 1st white space; '\t',' ','\n','\0','\r' or
+'        a deliminator
 '   String comparision:
-'     o fun21: eql_ulCp
+'     o fun23: eql_ulCp
 '       - compares two strings until deliminator is found
-'     o fun22: eqlNull_ulCp
+'     o fun24: eqlNull_ulCp
 '       - compares two strings until null is found
-'     o fun23: eqlWhite_ulCp
+'     o fun25: eqlWhite_ulCp
 '       - compares two strings until white space is found
 '   String cleanup:
-'     o fun24: rmWhite_ulCp
+'     o fun26: rmWhite_ulCp
 '       - removes white space from c-string
 '   String swap:
-'      o fun25: swapDelim_ulCp
+'      o fun27: swapDelim_ulCp
 '        - swaps two strings until deliminator is found
-'      o fun26: swapNull_ulCp
+'      o fun28: swapNull_ulCp
 '        - swaps two strings until null
-'      o fun27: shift_ulCp
+'      o fun29: shift_ulCp
 '        - shifts a substring in a string up or down
 '   o license:
 '     - licensing for this code (public domain / mit)
@@ -226,59 +232,36 @@
 | Fun03: ifDelim_ulCp
 |   - check if have deliminator in long
 | Input:
-|   - ulStr:
+|   - ulStrMac:
 |     o ulong_ulCp (ulong or ulong long) to check for the
 |       deliminator
-|   - delim:
+|   - delimMac:
 |     o delimintor in a ulong_ulCp to search for
 | Output:
 |   - Returns:
 |     o 0 if deliminator not found
 |     o not 0 if deliminator found
 \-------------------------------------------------------*/
-#define ifDelim_ulCp(ulStr, delim) (  ((((ulStr) ^ (delim)) - def_one_ulCp) & def_highBit_ulCp) )
+#define delimToNeg_ulCp(ulStrMac, delimMac) ( ((ulStrMac) ^ (delimMac)) - def_one_ulCp )
+#define ifDelim_ulCp(ulStrMac, delimMac) ( delimToNeg_ulCp((ulStrMac), (delimMac)) & def_highBit_ulCp )
 /*Logic:
+`  This is for delimToNeg_ulCp and ifDelim_ulCp:
 `  - see if deliminator is in long
-`  - delimToNull: ulCp ^ delimUL:
-`    o delim goes to 0
-`    o non-delim values (including null) are > 0
+`  - delimToNull: ulCp ^ delimUL
+`     o delim goes to 0
+`     o non-delim values (including null) are > 0
+`     * delimToNeg_ulCp
 `  - delimToNeg: delimToNull - def_one_ulCp
-`    o convets delimiator to -1
+`     o convets delimiator to -1
+`     * delimToNeg_ulCp
 `  - getNeg: delmToneg & def_highBit_ulCp:
 `     o get negative flags (only in delimiator)
 `     o non-delim values go to 0
+`     * ifDelim_ulCp
 */
 
 /*-------------------------------------------------------\
-| Fun04: ifNullDelim_ulCp
-|   - checks to see if null or deliminator in ulong_ulCp
-| Input:
-|   - ulStr:
-|     o ulong_ulCp to check for null or deliminator
-| Output:
-|   - Returns:
-|     o 0 if null or deliminator not found
-|     o not 0 if null or deliminator found
-\-------------------------------------------------------*/
-#define ifNullDelim_ulCp(ulStr, delim) ( ( ( (ulStr) & (~(delim)) ) - def_one_ulCp ) & def_highBit_ulCp )
-/*Logic
-`  - checks if null or deliminator in ulong_ulCp
-`  - rmDelim: ulStr & ~delim:
-`    o clears all deliminator bits from ulStr
-`    o null goes to 0
-`    o delim values goes 0
-`    o everything else is at least 1
-`  - negDelim: rmDelim - def_one_ulCp
-`    o 0 (deliminator / null) goes to -1
-`    o everything else is >= 0
-`  - getNeg: negDelim - def_highBit_ulCp
-`      o clear everything except negative bit
-`      o null and deliminator go to 1000 000
-`      o everything else goes to 0
-*/
-
-/*-------------------------------------------------------\
-| Fun05: ifNull_ulCp
+| Fu04: ifNull_ulCp
 |   - checks to see if null in ulong_ulCp
 | Input:
 |   - ulStr:
@@ -288,17 +271,60 @@
 |     o 0 if null not found
 |     o not 0 if null found
 \-------------------------------------------------------*/
-#define ifNull_ulCp(ulStr) (((ulStr) - def_one_ulCp) & def_highBit_ulCp)
+#define nullToNeg_ulCp(ulStrMac) ((ulStrMac) - def_one_ulCp)
+#define ifNull_ulCp(ulStrMac) (nullToNeg_ulCp((ulStrMac)) & def_highBit_ulCp)
 /* Logic
 `    - finds if null is in a ulong_ulCp
 `    - nullToNeg: ulStr - def_one_ulCp:
 `      o null ('\0') goes to -1
 `      o everything else goes to 0 or 1
+`      * nullToNeg_ulCp
 `    - detectNull: nullToNeg & def_highBit_ulCp:
 `      o clear everything except negative bit
 `      o null goes to 1000 000
 `      o everything else goes to 0
+`      * ifNull_ulCp
 */
+
+/*-------------------------------------------------------\
+| Fu05: ifNullDelim_ulCp
+|   - checks to see if null or deliminator in ulong_ulCp
+| Input:
+|   - ulStr:
+|     o ulong_ulCp to check for null or deliminator
+| Output:
+|   - Returns:
+|     o 0 if null or deliminator not found
+|     o not 0 if null or deliminator found
+\-------------------------------------------------------*/
+#define nullDelimToNeg_ulCp(ulStrMac, delimMac) ( delimToNeg_ulCp((ulStrMac), (delimMac)) | nullToNeg_ulCp((ulStrMac)) )
+#define ifNullDelim_ulCp(ulStrMac, delimMac) ( nullDelimToNeg_ulCp((ulStrMac), (delimMac)) & def_highBit_ulCp )
+/*Logic
+`  - checks if null or deliminator in ulong_ulCp
+`  - rmDelim: ulStr ^ delim:
+`    o clears all deliminator bits from ulStr
+`    o null goes to delim value
+`    o delim values goes 0
+`    o everything else is at least 1
+`    * nullDelimToNeg_ulCp
+`  - delimToneg: rmDelim - def_one_ulCp
+`    o 0 (deliminator / null) goes to -1
+`    o everything else is >= 0
+`    * nullDelimToNeg_ulCp (nullToNeg_ulCp)
+`  - nullToNeg: ulStr - def_one_ulCp
+`    o converts null to -1
+`  - negDelimNull: delimToNeg | nullToNeg
+`    o sets all deliminator values and nulls to a negative
+`      value
+`    * nullDelimToNeg_ulCp
+`  - getNeg: negDelim - def_highBit_ulCp
+`      o clear everything except negative bit
+`      o null and deliminator go to 1000 000
+`      o everything else goes to 0
+`      * ifNullDelim_ulCp
+` Need 5 OP
+*/
+
 
 /*-------------------------------------------------------\
 | Fun06: ifLineUnix_ulCp
@@ -311,7 +337,8 @@
 |     o 0 if unix end of line not found
 |     o not 0 if unix end of line found
 \-------------------------------------------------------*/
-#define ifLineUnix_ulCp(ulStr) ( ( ( (ulStr) & (~def_newline_ulCp) ) - def_one_ulCp ) & def_highBit_ulCp )
+#define lineUnixToNeg_ulCp(ulStrMac) ( ( (ulStrMac) & (~def_newline_ulCp) ) - def_one_ulCp )
+#define ifLineUnix_ulCp(ulStrMac) ( lineUnixToNeg_ulCp((ulStrMac)) & def_highBit_ulCp )
 
 /* Logic
 `   - find unix line end ('\n' or '\0')
@@ -319,13 +346,17 @@
 `     o '\n' goes to 0
 `     o '\0' stays at 0
 `     o everything else is > 0
+`     * lineUnixToNeg_ulCp
 `   - negLine: blankLine - def_one_upCp:
 `     o converts newlines and nulls to -1
 `     o all other values are >= 0
+`     * lineUnixToNeg_ulCp
 `   - findLine: negLine & def_highBit_ulCp
 `     o clears all non-negative bit values
 `     o '\n' and '\0' go to -127 (1000 000)
 `     o evertying else goes to 0
+`     * ifLineUnix_ulCp
+` Needs 3 OP
 */
 
 /*-------------------------------------------------------\
@@ -343,7 +374,8 @@
 |     also be set to > 0, however, these asccii charaters
 |     are not used in text files, so should not appear
 \-------------------------------------------------------*/
-#define ifEndLine_ulCp(strUL) ( (( ((strUL) & ~(def_eight_ulCp | def_four_ulCp)) + def_one_ulCp) - def_four_ulCp) & def_highBit_ulCp )
+#define endLineToNeg_ulCp(ulStrMac) ( ( ((ulStrMac) & ~(def_eight_ulCp | def_four_ulCp)) + def_one_ulCp) - def_four_ulCp )
+#define ifEndLine_ulCp(ulStrMac) ( endLineToNeg_ulCp((ulStrMac)) &  def_highBit_ulCp )
 
 /*```````````````````````````````````````````````````````\
 ` Fun06 Logic:
@@ -374,6 +406,7 @@
 `     o \n (-2) goes to 0x80
 `     o \t goes to 0
 `     o 16 or higher goest to 0
+` Needs 4 OP
 \```````````````````````````````````````````````````````*/
 
 /*-------------------------------------------------------\
@@ -389,26 +422,71 @@
 |     o 0 if white space not found
 |     o not 0 if white space found
 \-------------------------------------------------------*/
-#define ifWhite_ulCp(ulStr) ( ( (((ulStr) - def_one_ulCp) & def_hi3Bits_ulCp) - def_one_ulCp ) & def_highBit_ulCp )
+#define whiteToNeg_ulCp(ulStrMac) ( (((ulStrMac) - def_one_ulCp) & def_hi3Bits_ulCp) - def_one_ulCp )
+#define ifWhite_ulCp(ulStrMac) ( whiteToNeg_ulCp((ulStrMac)) & def_highBit_ulCp )
 /*Logic:
+`   This is for whiteToNeg_ulCp and ifWhite_ulCp
 `   - checks if have ' ', '\t', '\n', '\r', or '\0' (< 33)
 `   - cvtSpace: ulStr - def_one_ulCp:
 `     o convert space to 31 [no 32 flag] (null goes to -1)
 `     o values > 32 (non-white) still have 32 flag
+`     * whiteToNeg_ulCp
 `   - rmLowBit: cvtSpace & def_hi3Bits_ulCp:
 `     o removes bits < 32/64/128 (1, 2, 4, 8, 16 flags)
+`     * whiteToNeg_ulCp
 `   - whiteToNeg: rmLowBit - def_one_ulCp:
 `     o converts white space to negative -1
 `     o null goes to -2
 `     o everything else goes to 0 or higher
+`     * whiteToNeg_ulCp
 `   - getNeg: rmLowBit & def_highBit_ulCp:
 `     o get negative flags (only in white space)
 `     o non-white space (>32) goes to 0
+`     * ifWhite_ulCp
 */
 
+/*-------------------------------------------------------\
+| Fun09: ifWhiteDelim_ulCp
+|   - check if input long has deliminator or white space
+|     (' ', '\r', '\n', '\t', '\0')
+| Input:
+|   - ulStr:
+|     o ulong_ulCp (ulong or ulong long) to check for
+|       white space
+|   - delimMac:
+|     o  ulong_ulCp deliminator to search for
+|        * make with mkDelim_ulCp
+| Output:
+|   - Returns:
+|     o 0 if white space or deliminator not found
+|     o not 0 if white space or deliminator is found
+\-------------------------------------------------------*/
+#define whiteDelimToNeg_ulCp(ulStrMac, delimMac) ( delimToNeg_ulCp((ulStrMac), (delimMac)) | whiteToNeg_ulCp((ulStrMac)) )
+#define ifWhiteDelim_ulCp(ulStrMac, delimMac) ( whiteDelimToNeg_ulCp((ulStrMac), (delimMac)) & def_highBit_ulCp )
+/*Logic:
+`   - checks if have ' ', '\t', '\n', '\r', or '\0' (< 33)
+`     and the users deliminator
+`   - delimToNeg_ulCp (part of fun03):
+`     o detects if a deliminator is present (2 OP)
+`     * whiteDelimToNeg_ulCp
+`   - whiteToNeg_ulCp (part of fun08):
+`     o detect white space, 3 OP
+`     * whiteDelimToNeg_ulCp
+`   - findDelims: delimToNeg_ulCp | whiteToNeg_ulCp
+`     o finds if have white space or deliminator (5 OP)
+`     o all dected deliminators are set to -1 or -2
+`     * whiteDelimToNeg_ulCp
+`   - findDelims & def_highBit_ulCp:
+`     o sets all positive (non-deliminators) to 0, and
+`       negative values are kept (6 OP)
+`     * ifWhiteDelim_ulCp
+` For a normal char check, this would be two checks for
+`   8 bytes (assuming string is >= 8 characters). So,
+`   the saving is pretty good for long strings.
+*/
 
 /*-------------------------------------------------------\
-| Fun09: cpLen_ulCp
+| Fun10: cpLen_ulCp
 |   - copies cpStr into dupStr using ulong_ulCps
 | Input:
 |   - dupStr:
@@ -429,7 +507,7 @@ cpLen_ulCp(
 );
 
 /*-------------------------------------------------------\
-| Fun10: cpDelim_ulCp
+| Fun11: cpDelim_ulCp
 |   - copies string until deliminator is found
 | Input:
 |   - dupStr:
@@ -459,7 +537,7 @@ cpDelim_ulCp(
 );
 
 /*-------------------------------------------------------\
-| Fun11: cpStr_ulCp
+| Fun12: cpStr_ulCp
 |   - copies string until \0
 | Input:
 |   - dupStr:
@@ -480,7 +558,7 @@ cpStr_ulCp(
 );
 
 /*-------------------------------------------------------\
-| Fun12: cpLineUnix_ulCp
+| Fun13: cpLineUnix_ulCp
 |   - copies string until end of line (\0, \n)
 | Input:
 |   - dupStr:
@@ -501,7 +579,7 @@ cpLineUnix_ulCp(
 );
 
 /*-------------------------------------------------------\
-| Fun13: cpLine_ulCp
+| Fun14: cpLine_ulCp
 |   - copies string until end of line (\0, \r, \n)
 |   - ingores all unused ascii characters (> 32, not '\t')
 | Input:
@@ -523,7 +601,7 @@ cpLine_ulCp(
 );
 
 /*-------------------------------------------------------\
-| Fun14: cpWhite_ulCp
+| Fun15: cpWhite_ulCp
 |   - copies string until white space
 | Input:
 |   - dupStr:
@@ -544,7 +622,7 @@ cpWhite_ulCp(
 );
 
 /*-------------------------------------------------------\
-| Fun15: lenStr_ulCp
+| Fun16: lenStr_ulCp
 |   - finds the length of a string using ulong_ulCps
 | Input:
 |   - inStr:
@@ -569,7 +647,7 @@ lenStr_ulCp(
 );
 
 /*-------------------------------------------------------\
-| Fun16: lenStrNull_ulCp
+| Fun17: lenStrNull_ulCp
 |   - finds the length of a string using ulong_ulCps
 |     but also stops at null '\0'
 | Input:
@@ -595,7 +673,7 @@ lenStrNull_ulCp(
 );
 
 /*-------------------------------------------------------\
-| Fun17: endStr_ulCp
+| Fun18: endStr_ulCp
 |   - finds the end of a c-string ('\0')
 | Input:
 |   - inStr:
@@ -610,7 +688,7 @@ endStr_ulCp(
 );
 
 /*-------------------------------------------------------\
-| Fun18: endLineUnix_ulCp
+| Fun19: endLineUnix_ulCp
 |   - finds the end of a c-string. This assumes that the
 |     line ends in an '\0' or an '\n'
 | Input:
@@ -626,7 +704,7 @@ endLineUnix_ulCp(
 );
 
 /*-------------------------------------------------------\
-| Fun19: endLine_ulCp
+| Fun20: endLine_ulCp
 |   - finds the end of a c-string (all OS's; looks for
 |     '\0', '\n', and '\r')
 |   - ingores all unused ascii characters (> 32, not '\t')
@@ -643,7 +721,7 @@ endLine_ulCp(
 );
 
 /*-------------------------------------------------------\
-| Fun20: endWhite_ulCp
+| Fun21: endWhite_ulCp
 |   - finds 1st white space ('\t', ' ', '\n', '\0', '\r')
 | Input:
 |   - inStr:
@@ -658,7 +736,29 @@ endWhite_ulCp(
 );
 
 /*-------------------------------------------------------\
-| Fun21: eql_ulCp
+| Fun22: endWhiteDelim_ulCp
+|   - finds 1st white space ('\t', ' ', '\n', '\0', '\r')
+|     or deliminator
+| Input:
+|   - inStr:
+|     o c-string or string to look for whitespace in
+|   - delimUL:
+|     o ulong_ulCp with deliminator to search for
+|   - delimSC:
+|     o deliminator to search for (as character)
+| Output:
+|   - Returns:
+|     o number of characters in the string
+\-------------------------------------------------------*/
+unsigned int
+endWhiteDelim_ulCp(
+   signed char *inStr,
+   ulong_ulCp delimUL,
+   signed char delimSC
+);
+
+/*-------------------------------------------------------\
+| Fun23: eql_ulCp
 |   - compares two strings until deliminator is found
 | Input:
 |   - qryStr:
@@ -690,7 +790,7 @@ eql_ulCp(
 );
 
 /*-------------------------------------------------------\
-| Fun22: eqlNull_ulCp
+| Fun24: eqlNull_ulCp
 |   - compares two strings until null is found
 | Input:
 |   - qryStr:
@@ -713,7 +813,7 @@ eqlNull_ulCp(
 );
 
 /*-------------------------------------------------------\
-| Fun23: eqlWhite_ulCp
+| Fun25: eqlWhite_ulCp
 |   - compares two strings until white space is found
 | Input:
 |   - qryStr:
@@ -736,7 +836,7 @@ eqlWhite_ulCp(
 );
 
 /*-------------------------------------------------------\
-| Fun24: rmWhite_ulCp
+| Fun26: rmWhite_ulCp
 |   - removes white space from c-string
 | Input:
 |   - inStr:
@@ -753,7 +853,7 @@ rmWhite_ulCp(
 );
 
 /*-------------------------------------------------------\
-| Fun25: swapDelim_ulCp
+| Fun27: swapDelim_ulCp
 |   - swaps two strings until deliminator is found
 | Input:
 |   - firstStr:
@@ -784,7 +884,7 @@ swapDelim_ulCp(
 );
 
 /*-------------------------------------------------------\
-| Fun26: swapNull_ulCp
+| Fun28: swapNull_ulCp
 |   - swaps two strings until null
 | Input:
 |   - firstStr:
@@ -806,7 +906,7 @@ swapNull_ulCp(
 );
 
 /*-------------------------------------------------------\
-| Fun27: shift_ulCp
+| Fun29: shift_ulCp
 |   - shifts a substring in a string up or down
 | Input:
 |   - inStr:

@@ -21,6 +21,9 @@
 '       single letter amino acid identity
 '   o fun07: seqToAA_codonFun
 '     - converts nucleotide sequence to amino acids
+'   o fun08: revSeqToAA_codonFun
+'     - converts a reverse complement nucleotide sequence
+'       to amino acid sequence
 '   o license:
 '     - licensing for this code (public domain / mit)
 \~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
@@ -40,6 +43,8 @@
 #include "codonFun.h"
 
 /*no .c files*/
+#include "../genLib/ulCp.h"
+   /*I am only using the datatype and ifNull_ulCp macro*/
 #include "ntTo2Bit.h"
 #include "revNtTo2Bit.h"
 #include "codonTbl.h"
@@ -349,7 +354,7 @@ seqToAA_codonFun(
    signed char *seqStr,
    signed char *aaStr,
    signed long startSL,
-   signed long stopSL
+   signed long endSL
 ){
    signed long aaLenSL = 0;
 
@@ -357,13 +362,13 @@ seqToAA_codonFun(
    unsigned char secNtUC = 0;
    unsigned char thirdNtUC = 0;
 
-   if(! stopSL)
-      stopSL = -1;
+   if(endSL <= 0)
+      endSL = -1;
       /*using -1 so that I can use (unsigned long) -1 to
       `  get the maximum long value
       */
 
-   while((unsigned long) startSL < (unsigned long) stopSL)
+   while((unsigned long) startSL < (unsigned long) endSL)
    { /*Loop: Translate sequence*/
       if(seqStr[startSL] == '\0')
          break;
@@ -405,6 +410,160 @@ seqToAA_codonFun(
       aaStr[aaLenSL] = '\0';
       return def_incomplete_codonFun;
 } /*seqToAA*/
+
+/*-------------------------------------------------------\
+| Fun08: revSeqToAA_codonFun
+|  - converts a reverse complement nucleotide sequence to
+|    amino acid sequence
+| Input:
+|  - seqStr: 
+|    o c-string with the sequence to convert
+|  - aaStr:
+|    o c-string to hold the converted sequence, must be
+|      at least sequence / 3 bases long
+|  - startSL:
+|    o first base in sequence (last base of translation)
+|    o use 0 for all sequence
+|  - endSL:
+|    o last base in sequence (first base to traslate)
+|    o use 0 for all sequence
+| Output:
+|  - Modifies:
+|    o aaStr to hold the amino acid sequence
+|      * on nucleotide errors, a '\0' is added after last
+|        correct call
+|  - Returns:
+|    o length (> 0) of returned ammino acid sequence
+|    o def_unkownNt_codonFun (< 0) for sequence errors
+|    o def_incomplete_codonFun (< 0) if had partial end
+\-------------------------------------------------------*/
+signed long
+revSeqToAA_codonFun(
+   signed char *seqStr,
+   signed char *aaStr,
+   signed long startSL,
+   signed long endSL
+){ /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\
+   ' Fun08 TOC:
+   '  - converts a reverse complement nucleotide sequence
+   '    to an amino acid sequence
+   '   o fun08 sec01:
+   '     - variable declarations
+   '   o fun08 sec02:
+   '     - find end of the sequence to convert
+   '   o fun08 sec03:
+   '     - convert the sequence to an amino acid sequence
+   '   o fun08 sec04:
+   '     - return the aligned length or error message
+   \~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun08 Sec01:
+   ^   - variable declarations
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   signed long aaLenSL = 0;
+
+   unsigned char firstNtUC = 0;
+   unsigned char secNtUC = 0;
+   unsigned char thirdNtUC = 0;
+
+   ulong_ulCp *ulStr = 0; /*for quicker length finding*/
+   signed long offsetSL = 0;
+      /*how many bytes are unaligned*/
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun08 Sec02:
+   ^   - find end of the sequence to convert
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   if(endSL <= 0)
+   { /*If: no length is given*/
+      offsetSL = ((unsigned long) (seqStr + startSL)) % 8;
+
+      offsetSL = (8 & -(!!offsetSL)) - offsetSL + startSL;
+         /* Logic:
+         `  - check_offset: -(!!offsetSI)
+         `    o !!offsetSI converst offsetSI to -1 or 0
+         `  - get_extraBytes: 8 & check_offset:
+         `    o 8 & -1 = 8 (have offset)
+         `    o 8 & 0 = 0  (no offset)
+         `  - get_offset: get_extraBytes - offsetSI:
+         `    o 0 - 0 = 0
+         `    o 8 - extra_bytes = number of bytes that
+         `      I need to add before being aligned
+         `  - first_aln_byte: get_offset + startSL:
+         `    o this is the first byte that is 8 byte
+         `      aligned from startSL
+         */
+
+      for(
+          endSL = startSL;
+          endSL < offsetSL;
+          ++endSL
+      ){ /*Loop: check unaligned bytes for sequence end*/
+         if(! seqStr[endSL])
+            goto findAA_fun08_sec03;
+      }  /*Loop: check unaligned bytes for sequence end*/
+
+      ulStr = (ulong_ulCp *) &seqStr[endSL];
+
+      while(! ifNull_ulCp(*ulStr) )
+         ++ulStr;
+      endSL =
+         (signed long) (((signed char *) ulStr) - seqStr);
+      while(seqStr[endSL])
+         ++endSL; /*find null at end*/
+   } /*If: no length is given*/
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun08 Sec03:
+   ^   - convert the sequence to an amino acid sequence
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   findAA_fun08_sec03:;
+      while(endSL > startSL)
+      { /*Loop: Translate sequence*/
+         if(seqStr[endSL] == '\0')
+            break;
+
+         firstNtUC =
+            revNtTo2Bit[(unsigned char) seqStr[endSL--]];
+
+         if(seqStr[startSL] == '\0')
+            goto incomplete_fun08_sec04;
+
+         secNtUC =
+            revNtTo2Bit[(unsigned char) seqStr[endSL--]];
+
+         if(seqStr[startSL] == '\0')
+            goto incomplete_fun08_sec04;
+
+         thirdNtUC =
+            revNtTo2Bit[(unsigned char) seqStr[endSL--]];
+
+         if( (firstNtUC | secNtUC | thirdNtUC) & 8)
+            goto unkownNt_fun08_sec04; /*unkown base*/
+
+         aaStr[aaLenSL++] =
+            codonTbl[firstNtUC][secNtUC][thirdNtUC];
+      } /*Loop: Translate sequence*/
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun08 Sec04:
+   ^   - return the aligned length or error message
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   aaStr[aaLenSL] = '\0';
+   return aaLenSL;
+
+   unkownNt_fun08_sec04:;
+      aaStr[aaLenSL] = '\0';
+      return def_unkownNt_codonFun;
+   incomplete_fun08_sec04:;
+      aaStr[aaLenSL] = '\0';
+      return def_incomplete_codonFun;
+} /*revSeqToAA*/
 
 /*=======================================================\
 : License:

@@ -34,44 +34,68 @@
 '     - frees an refST_kmerFind structure
 '   o fun12: freeHeapAry_refST_kmerFind
 '     - frees an array of refST_kmerFind structure
-'   o fun14: addSeqToRefST_kmerFInd
+'   o fun13: addSeqToRefST_kmerFind
 '     - adds a sequence to a refST_kmerFind structure
+'   o fun14: addNoIndexSeqToRefST_kmerFind
+'     - adds a c-string sequence to a refST_kmerFind
+'       struct using a simple_waterman scoring system
+'     - max score found by length * def_matchScore_alnDefs
+'     - only use this function with the other noIndex
+'       functions, this does not convert the sequences to
+'       alignment index's
 '   o fun15: prep_tblST_kmerFind
 '     - sets up an tblST_kmerFind structure for primer
 '       searching
-'   o fun16: tsvToAry_refST_kmerFind
+'   o fun16: setChange_tblST_kmerFind
+'     - changes settings in a tblST_kmerFind struct
+'   o fun17: tsvToAry_refST_kmerFind
 '     - makes an array of refST_kmerFind structures from a
 '       tsv file
-'   o fun17: faToAry_refST_kmerFind
+'   o fun18: faToAry_refST_kmerFind
 '     - makes an array of refST_kmerFind structures
-'   o fun18: nextSeqChunk_tblST_kmerFind
+'   o fun19: nextSeqChunk_tblST_kmerFind
 '     - adds a new set of kmers from an sequence to an
 '       tblST_kmerFind structure
-'   o fun19: forCntMatchs_kmerFind
+'   o fun20: nextNoIndexSeqChunk_tblST_kmerFind
+'     - adds a new set of kmers from an sequence to an
+'       tblST_kmerFind structure (this is for sequences
+'       not converted to index's)
+'   o fun21: forCntMatchs_kmerFind
 '     - finds the number of kmers that are in both the
 '       kmer table (query) and the pattern (reference)
-'   o fun20: revCntMatchs_kmerFind
+'   o fun22: revCntMatchs_kmerFind
 '     - finds the number of kmers that are shared in the
 '       kmer table (query) and the reverse pattern
 '       (reference)
-'   o fun21: matchCheck_kmerFind
+'   o fun23: matchCheck_kmerFind
 '     - tells if the  match meets the min requirements to
 '       do an alignment or not
-'   o fun22: findRefInChunk_kmerFind
+'   o fun24: findRefInChunk_kmerFind
 '     - does an kmer check and alings an single sequence
 '       in an refST_kmerFind structure to see if there is
 '       an match
-'   o fun23: waterFindPrims_kmerFind
+'   o fun25: findNoIndexRefInChunk_kmerFind
+'     - does an kmer check and alings an single sequence
+'       in an refST_kmerFind structure to see if there is
+'       an match
+'     - this uses a simple waterman (so no alnSet struct,
+'       or conversion to index's needed)
+'   o fun26: waterFindPrims_kmerFind
 '     - finds primers in an sequence (from fastx file)
 '       using a slower, but more percise waterman
-'   o fun24: fxFindPrims_kmerFind
+'   o fun27: fxFindPrims_kmerFind
 '     - finds spoligotype spacers in an sequence (from
 '       fastx file) using an faster kmer search followed
 '       by an slower waterman to finalize alignments
-'   o fun25: phit_kmerFind
+'   o fun28: fxAllFindPrims_kmerFind
+'     - finds primers in an sequence (from fastx file)
+'       using an faster kmer search followed by an slower
+'       waterman to finalize alignments
+'     - this version finds all possible primers
+'   o fun29: phit_kmerFind
 '     - prints out the primer hits for a sequence
-'   o fun26: pHeaderHit_kmerFind
-'      - prints header for phit_kmerFind (fun25)
+'   o fun30: pHeaderHit_kmerFind
+'      - prints header for phit_kmerFind (fun29)
 '   o license:
 '     - Licensing for this code (public domain / mit)
 \~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
@@ -122,6 +146,7 @@ typedef struct tblST_kmerFind
    unsigned int numKmerUI; /*number of kmers kmerArySI
                            `  should store
                            */
+   unsigned int kmerSizeUI;/*size of kmerArySI*/
 
    unsigned int ntInWinUI; /*number kmers in window*/
    unsigned int rmNtUI; /*number bases to remove per add*/
@@ -408,7 +433,7 @@ freeHeapAry_refST_kmerFind(
 );
 
 /*-------------------------------------------------------\
-| Fun14: addSeqToRefST_kmerFInd
+| Fun13: addSeqToRefST_kmerFind
 |   - adds a sequence to a refST_kmerFind structure
 | Input:
 |   - tblSTPtr:
@@ -446,6 +471,48 @@ addSeqToRefST_kmerFind(
 );
 
 /*-------------------------------------------------------\
+| Fun14: addNoIndexSeqToRefST_kmerFind
+|   - adds a c-string sequence to a refST_kmerFind struct
+|     using a simple waterman scoring system
+|   - max score found by length * def_matchScore_alnDefs
+| Input:
+|   - tblSTPtr:
+|     o pointer to a tblST_kmerFind structure with
+|       settings, such as the kmer length, mask, and
+|       maximum number of kmers
+|   - refSTPtr:
+|     o pionter to the refST_kmerFind structure to add the
+|       sequence to
+|   - seqStr:
+|     o c-string with sequence
+|   - seqLenSI:
+|     o length of seqStr
+|   - idStr:
+|     o c-string with name of sequence or 0/null for noID
+|   - minPercKmersF:
+|     o float with minimum percentage of kmers to start
+|       considering an window supports an spacer
+|   - longestSeqSI:
+|     o length of the longest sequence in a refSTPtr
+|       structure
+| Output:
+|   - Returns:
+|     o 0 for memory error
+|     o length of longest sequence in an refST_kmerFind
+|       structure
+\-------------------------------------------------------*/
+signed int
+addNoIndexSeqToRefST_kmerFind(
+   struct tblST_kmerFind *tblSTPtr,/*has settings*/
+   struct refST_kmerFind *refSTPtr,/*add sequence to*/
+   signed char *seqStr,            /*sequence to add*/
+   signed int seqLenSI,            /*length of sequence*/
+   signed char *idStr,             /*name of sequence*/
+   float minPercKmersF,            /*for minimum score*/
+   signed int longestSeqSI         /*current longest seq*/
+);
+
+/*-------------------------------------------------------\
 | Fun15: prep_tblST_kmerFind
 |   - sets up an tblST_kmerFind structure for primer
 |     searching
@@ -475,7 +542,35 @@ prep_tblST_kmerFind(
 );
 
 /*-------------------------------------------------------\
-| Fun16: tsvToAry_refST_kmerFind
+| Fun16: setChange_tblST_kmerFind
+|   - changes settings in a tblST_kmerFind struct
+| Input:
+|   - tblSTPtr:
+|     o pointer to a tblST_kmerFind structure to set up
+|   - percExtraNtInWinF:
+|     o float with percentage of extra nucleotides to
+|       store in one window (beyond reference length)
+|   - percWinShiftF:
+|     o float with percentage of bases to shift for each
+|       new window in tblSTPtr
+|   - longestSeqUI:
+|     o longest sequence to map against. Used to find the
+|       maximum window size
+| Output:
+|   - Returns:
+|     o 0 for no errors
+|     o def_memErr_kmerFind for memory errors
+\-------------------------------------------------------*/
+signed char
+setChange_tblST_kmerFind(
+   struct tblST_kmerFind *tblSTPtr,
+   float percExtraNtInWinF,
+   float percWinShiftF,
+   unsigned long longestSeqUI
+);
+
+/*-------------------------------------------------------\
+| Fun17: tsvToAry_refST_kmerFind
 |   - makes an array of refST_kmerFind structures from a
 |     tsv file
 | Input:
@@ -543,7 +638,7 @@ tsvToAry_refST_kmerFind(
 );
 
 /*-------------------------------------------------------\
-| Fun17: faToAry_refST_kmerFind
+| Fun18: faToAry_refST_kmerFind
 |   - makes an array of refST_kmerFind structures
 | Input:
 |   - faFileStr:
@@ -603,7 +698,7 @@ faToAry_refST_kmerFind(
 );
 
 /*-------------------------------------------------------\
-| Fun18: nextSeqChunk_tblST_kmerFind
+| Fun19: nextSeqChunk_tblST_kmerFind
 |   - adds a new set of kmers from an sequence to an
 |     tblST_kmerFind structure
 | Input:
@@ -633,7 +728,38 @@ nextSeqChunk_tblST_kmerFind(
 );
 
 /*-------------------------------------------------------\
-| Fun19: forCntMatchs_kmerFind
+| Fun20: nextNoIndexSeqChunk_tblST_kmerFind
+|   - adds a new set of kmers from an sequence to an
+|     tblST_kmerFind structure (this is for sequences
+|     not converted to index's)
+| Input:
+|   - tblSTPtr:
+|     o pointer to an tblST_kmerFind structure to add
+|       kmers to
+|   - firstTimeBl:
+|     o 1: first time adding sequence (blank kmer array)
+|     o 0: updating the kmer window
+| Output:
+|   - Modifies:
+|     o tblSI and seqAryUS in tblSTPtr to have the old
+|       kmers (number specified by rmNtUI in tblSI)
+|       remove and the new kmers added in
+|       - for end of sequence it sets an index to
+|         def_endKmers_kmerBit
+|    o firstTimeBl:
+|      o to be 0 if it is 1
+|   - Returns:
+|     o 0 for not end of sequence
+|     o 1 for end of sequence
+\-------------------------------------------------------*/
+signed char
+nextNoIndexSeqChunk_tblST_kmerFind(
+   struct tblST_kmerFind *tblSTPtr,/*table to add seq to*/
+   signed char *firstTimeBl /*1: first set of kmers*/
+);
+
+/*-------------------------------------------------------\
+| Fun21: forCntMatchs_kmerFind
 |   - finds the number of kmers that are in both the
 |     kmer table (query) and the pattern (reference)
 | Input:
@@ -654,7 +780,7 @@ forCntMatchs_kmerFind(
 );
 
 /*-------------------------------------------------------\
-| Fun20: revCntMatchs_kmerFind
+| Fun22: revCntMatchs_kmerFind
 |   - finds the number of kmers that are shared in the
 |     kmer table (query) and the reverse pattern
 |     (reference)
@@ -676,7 +802,7 @@ revCntMatchs_kmerFind(
 );
 
 /*-------------------------------------------------------\
-| Fun21: matchCheck_kmerFind
+| Fun23: matchCheck_kmerFind
 |   - tells if the  match meets the min requirements to
 |     do an alignment or not
 | Input:
@@ -699,7 +825,7 @@ matchCheck_kmerFind(
 ); 
 
 /*-------------------------------------------------------\
-| Fun22: findRefInChunk_kmerFind
+| Fun24: findRefInChunk_kmerFind
 |   - does an kmer check and alings an single sequence
 |     in an refST_kmerFind structure to see if there is
 |     an match
@@ -766,8 +892,71 @@ findRefInChunk_kmerFind(
    unsigned long *refEndUL
 );
 
+
 /*-------------------------------------------------------\
-| Fun23: waterFindPrims_kmerFind
+| Fun25: findNoIndexRefInChunk_kmerFind
+|   - does an kmer check and alings an single sequence
+|     in an refST_kmerFind structure to see if there is
+|     an match
+|   - this uses a simple waterman (so no alnSet struct,
+|     or conversion to index's needed)
+| Input:
+|   - tblST_kmerFindPtr:
+|     o pointer to an tblST_kmerFind structure with the
+|       chunk of query (kmer table) to check
+|     o the stored sequence must be converted with
+|       seqToIndex_alnSet from alnSetStruct.h
+|   - refST_kmerFindPtr:
+|     o pointer to an refST_kmerFind structure with the
+|       reference (primers) kmers to check
+|   - minPerScoreF:
+|     o float with minimum percent score to keep an
+|       alingment
+|   - scoreSL:
+|     o pointer to an signed long to hold the alingment
+|       score
+|   - coordArySI:
+|     o sigend int array of four elements to get the
+|       reference and query mapping coordiantes
+|       * index 0 is first aligned base in reference
+|       * index 1 is last aligned base in reference
+|       * index 2 is first aligned base in query
+|       * index 3 is last aligned base in query
+| Output:
+|   - Modifies:
+|     o scoreSL
+|       - 0 if no alignment done
+|       - score if an alignment was done
+|     o qryStartUL
+|       - 0 if no alignment done
+|       - first aligned query base if alignment done
+|     o qryEndtUL
+|       - 0 if no alignment done
+|       - last aligned query base if alignment done
+|     o refStartUL
+|       - 0 if no alignment done
+|       - first aligned reference base if alignment done
+|     o refEndtUL
+|       - 0 if no alignment done
+|       - last aligned reference base if alignment done
+|   - Returns:
+|     o 1 if the reference sequence was found in the
+|       kmer table (query) sequence
+|     o 2 if the reverse alignment was best (may not have
+|       been found)
+|     o 0 if reference sequence not found
+\-------------------------------------------------------*/
+signed char
+findNoIndexRefInChunk_kmerFind(
+   struct tblST_kmerFind *tblSTPtr,
+   struct refST_kmerFind *refSTPtr,
+   float minPercScoreF,
+   signed long *scoreSL,
+   signed int coordArySI[]
+);
+
+/*-------------------------------------------------------\
+| Fun26: waterFindPrims_kmerFind
 |   - finds primers in an sequence (from fastx file) using
 |     a slower, but more percise waterman
 | Input:
@@ -846,7 +1035,7 @@ waterFindPrims_kmerFind(
 );
 
 /*-------------------------------------------------------\
-| Fun24: fxFindPrims_kmerFind
+| Fun27: fxFindPrims_kmerFind
 |   - finds primers in an sequence (from fastx file) using
 |     an faster kmer search followed by an slower waterman
 |     to finalize alignments
@@ -928,7 +1117,99 @@ fxFindPrims_kmerFind(
 );
 
 /*-------------------------------------------------------\
-| Fun25: phit_kmerFind
+| Fun28: fxAllFindPrims_kmerFind
+|   - finds primers in an sequence (from fastx file) using
+|     an faster kmer search followed by an slower waterman
+|     to finalize alignments
+|   - this version finds all possible primers
+| Input:
+|   - tblSTPtr:
+|     o pointer to an tblST_kmerFind structure with
+|       settings and to hold the query sequence to check
+|   - refAryST
+|     o array of refST_kmerFind structures with reference
+|       (primer) sequences to search for
+|   - lenRefAryUI:
+|     o number of refST_kmerFind structures in refSTAry
+|   - seqSTPtr:
+|     o pointer to an seqST structure with the
+|       sequence to check for primers in
+|   - minPerScoreF:
+|     o float with minimum percent score to keep an
+|       alingment
+|   - dirArySCPtr:
+|     o pointer to a signed char array to hold mapped
+|       primer directions
+|   - primArySSPtr:
+|     o pointer to a signed short array to get the index of
+|       of the primer that mapped to each position
+|   - scoreArySIPtr:
+|     o array of signed ints with the best score for each
+|       matched primer
+|   - seqStartArySIPtr:
+|     o array of signed ints with the starting position
+|       one the sequence for each score in scoreArySIPtr
+|   - seqEndAySIPtr:
+|     o array of signed ints with the ending position
+|       on the sequence for each score in scoreArySIPtr
+|   - primStartArySSPtr:
+|     o array of signed shorts with the starting position
+|       on the primer for each score in scoreArySIPtr
+|   - primEndAySSPtr:
+|     o array of signed shorts with the ending position
+|       on the primer for score in scoreArySIPTr
+|   - maxPrimSI:
+|     o how many primers can have until I need to resize
+|       arrays
+|   - alnSetPtr:
+|     o pointer to an alnSet structure with the alignment
+|       settings
+| Output:
+|   - Modifies:
+|     o dirArySCPtr to have direction of each mapped
+|       position
+|       - F for foward
+|       - R for reverse
+|     o primArySSPtr to have index of each mapped primer
+|     o scoreArySIPtr score of each position a primer
+|       mapped to
+|     o seqStartArySIPtr starting sequence position of
+|       each mapped position
+|     o seqEndArySIPtr ending sequence position of
+|     o primStartArySSPtr first mapped primer base for
+|       each alignment
+|     o primEndArySSPtr last mapped primer base for each
+|       alignment
+|     o maxPrimSI to have new size of arrays if they are
+|       resized
+|     o resizes dirArySCPtr, primArySSPtr, scoreArySIPtr,
+|       seqStartArySIPtr, seqEndArySIPtr,
+|       primStartArySSPtr, and primStartArySSPtr if needed
+|   - Returns:
+|     o number of primers found
+|     o 0 if no primers were found
+|     o -1 for memory errors
+\-------------------------------------------------------*/
+signed int
+fxAllFindPrims_kmerFind(
+   struct tblST_kmerFind *tblSTPtr,
+   struct refST_kmerFind *refSTAry,
+   unsigned int lenRefAryUI,
+   struct seqST *seqSTPtr,
+   float minPercScoreF,
+   signed char **dirArySCPtr,
+   signed short **primArySSPtr,
+   signed int **scoreArySIPtr,
+   signed int **seqStartArySIPtr,
+   signed int **seqEndArySIPtr,
+   signed short **primStartArySSPtr,
+   signed short **primEndArySSPtr,
+   signed int *maxPrimSI,
+   struct alnSet *alnSetPtr
+);
+
+/*-------------------------------------------------------\
+| Fun29: phit_kmerFind
 |   - prints out the primer hits for a sequence
 | Input:
 |   - refAryST:
@@ -983,8 +1264,8 @@ phit_kmerFind(
 );
 
 /*-------------------------------------------------------\
-| Fun26: pHeaderHit_kmerFind
-|    - prints header for phit_kmerFind (fun25)
+| Fun30: pHeaderHit_kmerFind
+|    - prints header for phit_kmerFind (fun29)
 | Input:
 |   - outFILE:
 |     o file to print header to

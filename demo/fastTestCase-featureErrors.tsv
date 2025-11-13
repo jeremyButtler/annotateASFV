@@ -1,0 +1,13 @@
+gene	duplicate	no_orf_start	no_orf_end	direction	start	end
+DP60L	True	False	False	reverse	402	581
+DP60L	True	False	False	forward	190010	190189
+ASFV-G-ACD-01990	True	False	False	reverse	189743	189889
+ASFV-G-ACD-01990	True	False	False	forward	702	848
+ASFV-G-ACD-00190	False	True	False	reverse	12455	12580
+ASFV-G-ACD-00270	False	True	False	reverse	16051	16164
+ASFV-G-ACD-00350	False	True	False	forward	19962	20093
+ASFV-G-ACD-01870	False	True	False	forward	182609	182746
+ASFV-G-ACD-01990-1	True	False	False	reverse	189743	189889
+ASFV-G-ACD-01990-1	True	False	False	forward	702	848
+DP60R-1	True	False	False	reverse	402	581
+DP60R-1	True	False	False	forward	190010	190189

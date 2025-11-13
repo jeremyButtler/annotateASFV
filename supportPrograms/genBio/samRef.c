@@ -21,12 +21,21 @@
 '     - allocates memory for a refs_samRef struct
 '   o fun06: realloc_refs_samRef
 '     - reallocates memory for a refs_samRef struct
-'   o fun07: getRefLen_samEntry
+'   o fun07: getRefLen_samRef
 '     - gets reference ids & length from a sam file header
 '   o fun08: findRef_refs_samRef
 '     - finds a reference id in a refs_samRef struct
 '   o fun09: addRef_samRef
 '     - adds reference information to array in refStack
+'   o fun10: buildRefMergeIndex_samRef
+'     - looks for refseq ids that might be contigs from
+'       the sam assembly and builds an index for each
+'       unique id
+'   o fun11: pSamHeader_samRef
+'     - prints samEntry header for a reference or set of
+'       references
+'   o fun12: pSamToRef_samRef
+'     - print samEntry to its reference bin
 '   o license:
 '     - licensing for this code (public domain / mit)
 \~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
@@ -272,7 +281,7 @@ realloc_refs_samRef(
 } /*realloc_refs_samRef*/
 
 /*-------------------------------------------------------\
-| Fun07: getRefLen_samEntry
+| Fun07: getRefLen_samRef
 |   - gets reference ids and length from a sam file header
 | Input:
 |   - refSTPtr:
@@ -303,9 +312,10 @@ realloc_refs_samRef(
 |     o 0 for no errors
 |     o def_memErr_samEntry for memory errors
 |     o def_fileErr_samEntry for file errors
+|     o 64 if no header reference ids in the sam file
 \-------------------------------------------------------*/
 signed char
-getRefLen_samEntry(
+getRefLen_samRef(
    struct refs_samRef *refSTPtr,/*holds ref lengths*/
    struct samEntry *samSTPtr,    /*for reading sam*/
    void *samFILE,                /*sam file with lengths*/
@@ -341,7 +351,14 @@ getRefLen_samEntry(
    ^   - blank and get first line of sam file
    \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
 
-   blank_refs_samRef(refSTPtr);
+   if(! refSTPtr->idAryStr)
+   { /*If: user has not setup the strucutre*/
+      if( setup_samRef(refSTPtr) )
+         goto memErr_fun07_sec04;
+   } /*If: user has not setup the strucutre*/
+
+   else
+      blank_refs_samRef(refSTPtr);
 
    if(! headStrPtr) ;
       /*not saving headers*/
@@ -545,6 +562,8 @@ getRefLen_samEntry(
 
    if(errSC == def_memErr_samEntry)
       goto memErr_fun07_sec04;
+   else if(! refSTPtr->numRefUI)
+      goto noRef_fun07_sec04;
 
    sortSync_strAry(
       refSTPtr->idAryStr,
@@ -561,16 +580,20 @@ getRefLen_samEntry(
    goto ret_fun07_sec04;
 
    memErr_fun07_sec04:;
-   errSC = def_memErr_samEntry;
-   goto ret_fun07_sec04;
+      errSC = def_memErr_samEntry;
+      goto ret_fun07_sec04;
 
    fileErr_fun07_sec04:;
-   errSC = def_fileErr_samEntry;
-   goto ret_fun07_sec04;
+      errSC = def_fileErr_samEntry;
+      goto ret_fun07_sec04;
+
+   noRef_fun07_sec04:;
+      errSC = 64;
+      goto ret_fun07_sec04;
 
    ret_fun07_sec04:;
-   return errSC;
-} /*getRefLen_samEntry*/
+      return errSC;
+} /*getRefLen_samRef*/
 
 /*-------------------------------------------------------\
 | Fun08: findRef_refs_samRef
@@ -633,6 +656,12 @@ addRef_samRef(
 ){
    unsigned long retUL = 0;
 
+   if(! refSTPtr->idAryStr)
+   { /*If: user has not setup the strucutre*/
+      if( setup_samRef(refSTPtr) )
+         goto memErr_fun09;
+   } /*If: user has not setup the strucutre*/
+
    *errSCPtr = 0;
 
 
@@ -666,6 +695,558 @@ addRef_samRef(
    memErr_fun09:;
       return def_memErr_samEntry;
 } /*addRef_samRef*/
+
+/*-------------------------------------------------------\
+| Fun10: buildRefMergeIndex_samRef
+|   - looks for refseq ids that might be contigs from the
+|     sam assembly and builds an index for each unique id
+| Input:
+|   - refsSTPtr:
+|     o refs_samRef struct with reference ids to scan for
+|       refseq ids from the same assembly
+|     o needs to be sorted by name (default state)
+| Output:
+|   - Returns:
+|     o signed int array to with the index assigned to
+|       each reference or -1 if no other references group
+|       with this reference
+|     o 0 for memory errors
+\-------------------------------------------------------*/
+signed int *
+buildRefMergeIndex_samRef(
+   struct refs_samRef *refsSTPtr
+){ /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\
+   ' Fun10 TOC:
+   '   - looks for refseq ids that might be contigs from
+   '     the sam assembly and builds an index for each
+   '     unique id
+   '   o fun10 sec01:
+   '     - variable declarations
+   '   o fun10 sec02:
+   '     - initialize memory and setup pointers
+   '   o fun10 sec03:
+   '     - copy first id
+   '   o fun10 sec04:
+   '     - scan for refseq ids with multiple contigs
+   '   o fun10 sec05:
+   '     - clean up and return
+   \~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun10 Sec01:
+   ^   - variable declarations
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   signed char *idStr = 0;
+   signed char *oldIdStr = 0;
+   signed char *idMemHeapStr = 0;
+   unsigned int uiId = 0;
+   signed int *retHeapArySI = 0;
+   signed int contigLenSI = 0;
+   signed int refIdSI = 0;
+
+   signed int lenSI = 0;
+
+   unsigned long *idULPtr = 0;
+   unsigned long *oldIdULPtr = 0;
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun10 Sec02:
+   ^   - initialize memory and setup pointers
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   retHeapArySI =
+      malloc(refsSTPtr->numRefUI * sizeof(signed int));
+   if(! retHeapArySI)
+      goto memErr_fun10_sec05;
+
+   idMemHeapStr = malloc(41 * sizeof(signed char));
+      /*41 = 32 + 10; worst case is 15 offset for first
+      `  id, so 15 + 16 = 31, which  means to get 10
+      `  characters I need 31 + 10 characters to have
+      `  two 16 byte aligned 10 char strings
+      */
+   if(! idMemHeapStr)
+      goto memErr_fun10_sec05;
+
+   /*make sure the id c-strings are 16 byte aligned*/
+   uiId = ( ((unsigned long) idMemHeapStr) % 16 );
+   if(uiId) uiId += (16 - uiId);
+
+   idStr = idMemHeapStr + uiId;
+   oldIdStr = idStr + 16;
+   idStr[9] = 0;
+   oldIdStr[9] = 0;
+
+   /*assign id strings to longs for quick comparisons*/
+   idULPtr = (unsigned long *) idStr;
+   oldIdULPtr = (unsigned long *) oldIdStr;
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun10 Sec03:
+   ^   - copy first id
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   lenSI = endStr_ulCp(refsSTPtr->idAryStr);
+
+   refIdSI = 0;
+
+   /*copy first id if it is long enough to have contigs*/
+   if(lenSI <= 13)
+   { /*If: to short to be a refseq id*/
+      oldIdStr[0] = 0;
+      refIdSI = 1;
+      retHeapArySI[0] = -1;
+   } /*If: to short to be a refseq id*/
+
+   else
+   { /*Else: could be a refseq id*/
+      cpLen_ulCp(
+         oldIdStr,
+         get_strAry(refsSTPtr->idAryStr, 0),
+         9 /*assembly is NZ_<6_digits><contig_number>*/
+      );
+
+      if(oldIdStr[2] != '_')
+      { /*If: not a refseq id*/
+         oldIdStr[0] = 0;
+         retHeapArySI[0] = -1;
+         refIdSI = 1;
+      } /*If: not a refseq id*/
+
+      else
+         retHeapArySI[0] = refIdSI;
+   } /*Else: could be a refseq id*/
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun10 Sec04:
+   ^   - scan for refseq ids with multiple contigs
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   /*start scan for matching contigs*/
+   for(uiId = 1; uiId < refsSTPtr->numRefUI; ++uiId)
+   { /*Loop: scan for refseq ids*/
+      lenSI =
+        endStr_ulCp(get_strAry(refsSTPtr->idAryStr,uiId));
+
+      if(lenSI <= 13)
+      { /*If: not refseq or non-assembly refseq*/
+         if(! contigLenSI)
+            retHeapArySI[uiId - 1] = -1;
+            /*previous sequence had one contig*/
+
+         retHeapArySI[uiId] = -1;
+         oldIdStr[0] = 0;
+         refIdSI = uiId + 1;
+      } /*If: not refseq or non-assembly refseq*/
+
+      else
+      { /*Else: have a refseq id*/
+         cpLen_ulCp(
+            idStr,
+            get_strAry(refsSTPtr->idAryStr, uiId),
+            9
+         ); /*copy the id (<tag_2_letters>_<id_6_chars>)
+            `  of the refseq id
+            `  using ulCp becuase I do not know if the
+            `    strings are 8byte aligned
+            */
+
+         if(
+               *idULPtr != *oldIdULPtr
+            || idStr[8] != oldIdStr[8]
+         ){ /*If: different ids*/
+            if(! contigLenSI)
+               retHeapArySI[uiId - 1] = -1;
+               /*previous sequence had one contig*/
+            else
+               refIdSI = uiId;
+
+            retHeapArySI[uiId] = refIdSI;
+            contigLenSI = 0;
+            *oldIdULPtr = *idULPtr;
+            oldIdStr[8] = idStr[8];
+         } /*If: different ids*/
+
+         else if(idStr[2] != '_')
+         { /*Else If: not refseq id*/
+            if(! contigLenSI)
+               retHeapArySI[uiId - 1] = -1;
+               /*previous sequence had one contig*/
+
+            contigLenSI = 0;
+            retHeapArySI[uiId] = -1;
+            oldIdStr[0] = idStr[0];
+            refIdSI = uiId + 1;
+         } /*Else If: not refseq id*/
+
+         else
+         { /*Else: both sequences are from same assembly*/
+            retHeapArySI[uiId] = refIdSI;
+            ++contigLenSI;
+         } /*Else: both sequences are from same assembly*/
+      } /*Else: have a refseq id*/
+   } /*Loop: scan for refseq ids*/
+
+   if(! contigLenSI)
+      retHeapArySI[uiId - 1] = -1;
+      /*last sequence had one contig*/
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun10 Sec05:
+   ^   - clean up and return
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   goto ret_fun10_sec05;
+
+   memErr_fun10_sec05:;
+      if(retHeapArySI)
+          free(retHeapArySI);
+      retHeapArySI = 0;
+      goto ret_fun10_sec05;
+   ret_fun10_sec05:;
+      if(idMemHeapStr)
+         free(idMemHeapStr);
+      idMemHeapStr = 0;
+      return retHeapArySI;
+} /*buildRefMergeIndex_samRef*/
+
+/*-------------------------------------------------------\
+| Fun11: pSamHeader_samRef
+|   - prints samEntry header for a reference or set of
+|     references
+| Input:
+|   - refIndexSI:
+|     o reference printing header to
+|   - headStr:
+|     o c-string with general header to print out
+|     o these are headers that do not relate to the
+|       reference
+|     o this is made by getRefLen_samRef
+|   - unmapBl:
+|     o 1: print the unmapped reads header (no sequence
+|          (reference) entry)
+|     o 0: print header for a mapped read
+|   - refSTPtr:
+|     o samRef struct pointer with reference ids
+|     o 0/null, use refIdStr in samSTPtr
+|   - refIndexArySI:
+|     o index array with reference index to print to
+|     o no input (0/null), use refIdStr in samSTPtr
+|     o index values:
+|       * -1: no merging
+|       * >=0: print reference to reference id at this
+|         index
+|     o must be in same order as index's in refSTPtr and
+|       mereged references must be next to each other
+|   - outFILE:
+|     o FILE pionter to file to print to
+| Output:
+|   - Prints:
+|     o header and reference lengths to outFILE
+\-------------------------------------------------------*/
+void
+pSamHeader_samRef(
+   signed int refIndexSI,     /*check if file was opened*/
+   signed char *headStr,      /*header to print out*/
+   signed char unmapBl,       /*1: unmapped header*/
+   struct refs_samRef *refSTPtr, /*references used*/
+   signed int *refIndexArySI, /*index to print read to*/
+   void *outFILE
+){ /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\
+   ' Fun11 TOC:
+   '   - prints samEntry header for a reference or set of
+   '     references
+   '   o fun11 sec01:
+   '     - variable declarations
+   '   o fun11 sec02:
+   '     - print HD entry in the general header
+   '   o fun11 sec03:
+   '     - print sequence (reference) entries for header
+   '   o fun11 sec04:
+   '     - finish printing the general header
+   \~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun11 Sec01:
+   ^   - variable declarations
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   signed char *tmpHeadStr = headStr;
+   signed int siStart = 0;
+   signed int mainRefSI = 0;
+   signed char tmpSC = 0;
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun11 Sec02:
+   ^   - print HD entry in the general header
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   if(headStr)
+   { /*If: have header to print*/
+      /*as a rule the HD entry comes first, then the
+      `  reference lengths (for minimap2)
+      */
+      if(
+            tmpHeadStr[1] == 'H'
+         && tmpHeadStr[2] == 'D'
+         && tmpHeadStr[3] < 33
+      ){ /*If: have an HD header entry*/
+         tmpHeadStr += endLine_ulCp(tmpHeadStr);
+         tmpSC = *tmpHeadStr;
+         *tmpHeadStr = 0;
+
+         fprintf(
+           (FILE *) outFILE,
+           "%s%s",
+           headStr,
+           str_endLine
+         );
+         *tmpHeadStr = tmpSC;
+
+         while(*tmpHeadStr && *tmpHeadStr < 33)
+            ++tmpHeadStr; /*get of \n and \r*/
+         headStr = tmpHeadStr;
+      }  /*If: have an HD header entry*/
+   } /*If: have header to print*/
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun11 Sec03:
+   ^   - print sequence (reference) entries for header
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   if(unmapBl)
+      ; /*print unmapped reads; do not print seq header*/
+   else if(refIndexArySI && refIndexArySI[refIndexSI]>=0)
+   { /*If: user is grouping references*/
+      mainRefSI = refIndexArySI[refIndexSI];
+
+      for(siStart=refIndexSI - 1; siStart >= 0; --siStart)
+         if(refIndexArySI[siStart] != mainRefSI)
+            break; /*find first reference in output file*/
+      ++siStart;
+
+      while(siStart < (signed int) refSTPtr->numRefUI)
+      { /*Loop: print reference headers*/
+         fprintf(
+            (FILE *) outFILE,
+            "@SQ\tSN:%s\tLN:%u%s",
+            get_strAry(refSTPtr->idAryStr, siStart),
+            refSTPtr->lenAryUI[siStart],
+            str_endLine
+         );
+         ++siStart;
+
+         if(siStart >= (signed int) refSTPtr->numRefUI)
+            break;
+         if(refIndexArySI[siStart] != mainRefSI)
+            break;
+      } /*Loop: print reference headers*/
+   } /*If: user is grouping references*/
+
+   else if(! unmapBl)
+   { /*Else: only printing this reference to the header*/
+      fprintf(
+         (FILE *) outFILE,
+         "@SQ\tSN:%s\tLN:%u%s",
+         get_strAry(refSTPtr->idAryStr, refIndexSI),
+         refSTPtr->lenAryUI[refIndexSI],
+         str_endLine
+      );
+   } /*Else: only printing this reference to the header*/
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun11 Sec04:
+   ^   - finish printing the general header
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   if(headStr)
+   { /*If: have general header to finish printing*/
+      while(*headStr)
+      { /*Loop: finish printing the general header*/
+         tmpHeadStr += endLine_ulCp(tmpHeadStr);
+         tmpSC = *tmpHeadStr;
+         *tmpHeadStr = 0;
+
+         fprintf(
+           (FILE *) outFILE,
+           "%s%s",
+           headStr,
+           str_endLine
+         );
+
+         *tmpHeadStr = tmpSC;
+         while(*tmpHeadStr && *tmpHeadStr < 33)
+            ++tmpHeadStr; /*get of \n and \r*/
+         headStr = tmpHeadStr;
+      } /*Loop: finish printing the general header*/
+   } /*If: have general header to finish printing*/
+} /*pSamHeader_samRef*/
+
+/*-------------------------------------------------------\
+| Fun12: pSamToRef_samRef
+|   - print samEntry to its reference bin
+| Input:
+|   - samSTPtr:
+|     o samEntry struct pointer with read to print
+|   - prefixStr:
+|     o c-string with prefix to print to
+|   - headStr:
+|     o c-string with header to print to the new file
+|   - pUnmapBl:
+|     o 1: print unmapped reads
+|     o 0: do not print unmapped reads
+|   - refSTPtr:
+|     o samRef struct pointer with reference ids
+|     o 0/null, use refIdStr in samSTPtr
+|   - refIndexArySI:
+|     o index array with reference index to print to
+|     o no input (0/null), use refIdStr in samSTPtr
+|     o index values:
+|       * -1: no merging
+|       * >=0: print reference to reference id at this
+|         index
+| Output:
+|   - Prints:
+|     o read in samSTPtr to file named
+|       "prefix-referenceId.sam"
+|   - Returns:
+|     o 0 for success
+|     o 1 if no reference id
+|     o 2 if no sequence
+|     o -1 for file errors
+\-------------------------------------------------------*/
+signed char
+pSamToRef_samRef(
+   struct samEntry *samSTPtr,  /*read to print*/
+   signed char *prefixStr,     /*file prefix to print to*/
+   signed char *headStr,       /*header for new file*/
+   signed char pUnmapBl,       /*1: print unmapped reads*/
+   struct refs_samRef *refSTPtr,/*has reference ids*/
+   signed int *refIndexArySI   /*index to print read to*/
+){ /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\
+   ' Fun12 TOC
+   '   - print samEntry to its reference bin
+   '   o fun12 sec01:
+   '     - variable declarations
+   '   o fun12 sec02:
+   '     - find (build) the file name to print the read to
+   '   o fun12 sec03:
+   '     - open file and print read
+   '   o fun12 sec04:
+   '     - return the result
+   \~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun12 Sec01:
+   ^   - variable declarations
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   signed char outStr[4096];
+   signed int lenSI = 0;
+   signed int indexSI = 0;
+
+   signed char unmapBl = 0;
+   FILE *outFILE = 0;
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun12 Sec02:
+   ^   - find (build) the file name to print the read to
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   lenSI = cpStr_ulCp(outStr, prefixStr);
+   outStr[lenSI++] = '-';
+   outStr[lenSI] = 0;
+
+   if(! samSTPtr->seqStr[0] || samSTPtr->seqStr[0] == '*')
+      goto noSeq_fun12;
+
+   else if(pUnmapBl && samSTPtr->flagUS & 4)
+   { /*Else If: unmapped read and print unmapped reads*/
+      lenSI +=
+          cpStr_ulCp(
+             &outStr[lenSI],
+             (signed char *) "unmapped"
+          );
+      unmapBl = 1;
+   } /*Else If: unmapped read and print unmapped reads*/
+
+   else if(! refIndexArySI || ! refSTPtr)
+      lenSI +=
+          cpStr_ulCp(&outStr[lenSI], samSTPtr->refIdStr);
+   else
+   { /*Else: find id in array*/
+      indexSI =
+         find_strAry(
+            refSTPtr->idAryStr,
+            samSTPtr->refIdStr,
+            refSTPtr->numRefUI
+         );
+      if(indexSI < 0)
+         goto noId_fun12;
+      else if(refIndexArySI[indexSI] >= 0)
+         indexSI = refIndexArySI[indexSI];
+
+      lenSI +=
+          cpStr_ulCp(
+             &outStr[lenSI],
+             get_strAry(refSTPtr->idAryStr, indexSI)
+         );
+   } /*Else: find id in array*/
+
+   outStr[lenSI++] = '.';
+   outStr[lenSI++] = 's';
+   outStr[lenSI++] = 'a';
+   outStr[lenSI++] = 'm';
+   outStr[lenSI] = 0;
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun12 Sec03:
+   ^   - open file and print read
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   outFILE = fopen((char *) outStr, "r");
+
+   if(! outFILE)
+   { /*If: need to make the file*/
+      outFILE = fopen((char *) outStr, "w");
+      if(outFILE)
+         pSamHeader_samRef(
+            indexSI,
+            headStr,
+            unmapBl,
+            refSTPtr,
+            refIndexArySI,
+            outFILE
+         ); /*print header to sam file*/
+   } /*If: need to make the file*/
+
+   else
+   { /*Else: file already exists*/
+      fclose(outFILE);
+      outFILE = fopen((char *) outStr, "a");
+   } /*Else: file already exists*/
+
+   if(! outFILE)
+      goto fileErr_fun12;
+   p_samEntry(samSTPtr, 0, outFILE);
+   fclose(outFILE);
+   outFILE = 0;
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun12 Sec04:
+   ^   - return the result
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   return 0;
+
+   noId_fun12:;
+      return 1;
+   noSeq_fun12:;
+      return 2;
+   fileErr_fun12:;
+      return -1;
+} /*pSamToRef_samRef*/
 
 /*=======================================================\
 : License:
@@ -711,7 +1292,7 @@ addRef_samRef(
 : 
 : MIT License:
 : 
-: Copyright (c) 2024 jeremyButtler
+: Copyright (c) 2025 jeremyButtler
 : 
 : Permission is hereby granted, free of charge, to any
 :   person obtaining a copy of this software and

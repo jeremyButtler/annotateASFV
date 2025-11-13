@@ -1,4 +1,0 @@
-b mainNeedle.c:1414 if seqSL == 262
-#r -ref ref.fa -qry qry.fa
-r -ref /home/wander/files/testing/diflu/PA-ref.fa -qry /home/wander/files/testing/diflu/PA-blast.fa > del.sam
-#r -ref testref.fa -qry-fq qry.fq -scan

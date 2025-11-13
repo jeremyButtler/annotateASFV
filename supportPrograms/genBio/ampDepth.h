@@ -17,6 +17,8 @@
 '     - prints the header for the read depth output
 '   o fun06: pdepth_ampDepth
 '     - prints the read depth of each base
+'   o fun07: pGeneCoverage_ampDepth
+'     - prints percent gene coverage and start/mid/end
 '   o license:
 '     - licensing for this code (public domain / mit)
 \~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
@@ -43,7 +45,7 @@ struct geneCoord;
 |     o geneCoord struct pointer with gene/target
 |       coordinates want to extract
 |   - numGenesSI:
-|     o number of genes in coordsSTPtr (index 1)
+|     o number of genes in coordsSTPtr (index 0)
 |   - numOffTargSI:
 |     o number of reads not mapping to a gene coordiante,
 |       but are mapped to the genome
@@ -161,6 +163,36 @@ pdepth_ampDepth(
    signed char *refStr,     /*name of reference*/
    signed char *flagStr,    /*flag to go in left column*/
    void *outFILE            /*output file*/
+);
+
+/*-------------------------------------------------------\
+| Fun07: pGeneCoverage_ampDepth
+|   - prints percent gene coverage and start/mid/end
+| Input
+|   - depthArySI:
+|     o signed int array with read depths
+|   - minDepthSI:
+|     o minimum read depth to count as covered
+|   - geneCoordSTPtr:
+|     o geneCoord struct with gene coordinates to print
+|   - numGenesSI:
+|     o number of genes in geneCoordSTPtr (index 0)
+|   - outFILE:
+|     o FILE * pointer to print to
+| Output:
+|   - Prints:
+|     o percent coverage and starts/ends to outFILE
+|   - Returns:
+|     o 0 for no errors
+|     o 1 for memory errors
+\-------------------------------------------------------*/
+signed char
+pGeneCoverage_ampDepth(
+   signed int *depthArySI, /*histogram of read depths*/
+   signed int minDepthSI,  /*min depth to print*/
+   struct geneCoord *geneCoordSTPtr, /*gene coordinates*/
+   signed int numGenesSI,            /*number of genes*/
+   void *outFILE           /*file to print to*/
 );
 
 #endif

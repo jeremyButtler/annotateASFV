@@ -21,12 +21,21 @@
 '     - allocates memory for a refs_samRef struct
 '   o fun06: realloc_refs_samRef
 '     - reallocates memory for a refs_samRef struct
-'   o fun07: getRefLen_samEntry
+'   o fun07: getRefLen_samRef
 '     - gets reference ids & length from a sam file header
 '   o fun08: findRef_refs_samRef
 '     - finds a reference id in a refs_samRef struct
 '   o fun09: addRef_samRef
 '     - adds reference information to array in refStack
+'   o fun10: buildRefMergeIndex_samRef
+'     - looks for refseq ids that might be contigs from
+'       the sam assembly and builds an index for each
+'       unique id
+'   o fun11: pSamHeader_samRef
+'     - prints samEntry header for a reference or set of
+'       references
+'   o fun12: pSamToRef_samRef
+'     - print samEntry to its reference bin
 '   o license:
 '     - licensing for this code (public domain / mit)
 \~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
@@ -159,7 +168,7 @@ realloc_refs_samRef(
 );
 
 /*-------------------------------------------------------\
-| Fun07: getRefLen_samEntry
+| Fun07: getRefLen_samRef
 |   - gets reference ids and length from a sam file header
 | Input:
 |   - refSTPtr:
@@ -191,7 +200,7 @@ realloc_refs_samRef(
 |     o def_fileErr_samEntry for file errors
 \-------------------------------------------------------*/
 signed char
-getRefLen_samEntry(
+getRefLen_samRef(
    struct refs_samRef *refSTPtr,/*holds ref lengths*/
    struct samEntry *samSTPtr,    /*for reading sam*/
    void *samFILE,                /*sam file with lengths*/
@@ -253,6 +262,113 @@ addRef_samRef(
    signed char *errSCPtr
 );
 
+/*-------------------------------------------------------\
+| Fun10: buildRefMergeIndex_samRef
+|   - looks for refseq ids that might be contigs from the
+|     sam assembly and builds an index for each unique id
+| Input:
+|   - refsSTPtr:
+|     o refs_samRef struct with reference ids to scan for
+|       refseq ids from the same assembly
+|     o needs to be sorted by name (default state)
+| Output:
+|   - Returns:
+|     o signed int array to with the index assigned to
+|       each reference or -1 if no other references group
+|       with this reference
+|     o 0 for memory errors
+\-------------------------------------------------------*/
+signed int *
+buildRefMergeIndex_samRef(
+   struct refs_samRef *refsSTPtr
+);
+
+/*-------------------------------------------------------\
+| Fun11: pSamHeader_samRef
+|   - prints samEntry header for a reference or set of
+|     references
+| Input:
+|   - refIndexSI:
+|     o reference printing header to
+|   - headStr:
+|     o c-string with general header to print out
+|     o these are headers that do not relate to the
+|       reference
+|     o this is made by getRefLen_samRef
+|   - unmapBl:
+|     o 1: print the unmapped reads header (no sequence
+|          (reference) entry)
+|     o 0: print header for a mapped read
+|   - refSTPtr:
+|     o samRef struct pointer with reference ids
+|     o 0/null, use refIdStr in samSTPtr
+|   - refIndexArySI:
+|     o index array with reference index to print to
+|     o no input (0/null), use refIdStr in samSTPtr
+|     o index values:
+|       * -1: no merging
+|       * >=0: print reference to reference id at this
+|         index
+|     o must be in same order as index's in refSTPtr and
+|       mereged references must be next to each other
+|   - outFILE:
+|     o FILE pionter to file to print to
+| Output:
+|   - Prints:
+|     o header and reference lengths to outFILE
+\-------------------------------------------------------*/
+void
+pSamHeader_samRef(
+   signed int refIndexSI,     /*check if file was opened*/
+   signed char *headStr,      /*header to print out*/
+   signed char unmapBl,       /*1: unmapped header*/
+   struct refs_samRef *refSTPtr, /*references used*/
+   signed int *refIndexArySI, /*index to print read to*/
+   void *outFILE
+);
+
+/*-------------------------------------------------------\
+| Fun12: pSamToRef_samRef
+|   - print samEntry to its reference bin
+| Input:
+|   - samSTPtr:
+|     o samEntry struct pointer with read to print
+|   - prefixStr:
+|     o c-string with prefix to print to
+|   - headStr:
+|     o c-string with header to print to the new file
+|   - pUnmapBl:
+|     o 1: print unmapped reads
+|     o 0: do not print unmapped reads
+|   - refSTPtr:
+|     o samRef struct pointer with reference ids
+|     o 0/null, use refIdStr in samSTPtr
+|   - refIndexArySI:
+|     o index array with reference index to print to
+|     o no input (0/null), use refIdStr in samSTPtr
+|     o index values:
+|       * -1: no merging
+|       * >=0: print reference to reference id at this
+|         index
+| Output:
+|   - Prints:
+|     o read in samSTPtr to file named
+|       "prefix-referenceId.sam"
+|   - Returns:
+|     o 0 for success
+|     o 1 if no reference id
+|     o -1 for file errors
+\-------------------------------------------------------*/
+signed char
+pSamToRef_samRef(
+   struct samEntry *samSTPtr,  /*read to print*/
+   signed char *prefixStr,     /*file prefix to print to*/
+   signed char *headStr,       /*header for new file*/
+   signed char pUnmapBl,       /*1: print unmapped reads*/
+   struct refs_samRef *refSTPtr,/*has reference ids*/
+   signed int *refIndexArySI   /*index to print read to*/
+);
+
 #endif
 
 /*=======================================================\
@@ -299,7 +415,7 @@ addRef_samRef(
 : 
 : MIT License:
 : 
-: Copyright (c) 2024 jeremyButtler
+: Copyright (c) 2025 jeremyButtler
 : 
 : Permission is hereby granted, free of charge, to any
 :   person obtaining a copy of this software and

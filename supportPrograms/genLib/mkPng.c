@@ -621,7 +621,7 @@ setup_st_mkPng(
 
    /*make sure every row ends in a byte*/
    pngSTPtr->widthUS +=
-      pngSTPtr->widthUS % pngSTPtr->pixPerByteUC;
+      pngSTPtr->widthUS % def_bytesInUL_64bit;
 
    pngSTPtr->numPixelSL =
       pngSTPtr->widthUS * pngSTPtr->heightUS;
@@ -833,7 +833,6 @@ addBar_st_mkPng(
    signed long cpIndexSL = 0;  /*index copying at*/
    signed long lenRowSL = 0;   /*length of one row*/
 
-   signed int pixelsPerLongSI = 0;
 
    unsigned char bitUC = 0;    /*for building mask*/
 
@@ -861,7 +860,7 @@ addBar_st_mkPng(
    /*this is safe because setup enforces that width must
    `   be a multiple of bits per byte
    */
-   lenRowSL = byteLenToULLen_64bit(pngSTPtr->widthUS);
+   lenRowSL = byteLenToULLen_64bit(pngSTPtr->widthUS) - 1;
       /*get number of longs in a row*/
 
    /*****************************************************\
@@ -869,31 +868,22 @@ addBar_st_mkPng(
    *   - find start, end, and setup masks
    \*****************************************************/
 
-   pixelsPerLongSI =
-      (pngSTPtr->pixPerByteUC * sizeof(ul_64bit));
    startSL = xSL;
    endSL = startSL + widthUS;
 
    /*_________________build_start_mask__________________*/
-   maskStartUL =
-        def_bitsInUL_64bit
-      - (xSL % pixelsPerLongSI) * pngSTPtr->pixDepthUC;
+   maskStartUL = (xSL % def_bytesInUL_64bit);
       /*find number of pixels not changing at start*/
-   maskStartUL = ((ul_64bit) -1) >> maskStartUL;
+   maskStartUL = ((ul_64bit) -1) >> (maskStartUL << 3);
    maskStartUL = ulToLittle_endin(maskStartUL);
       /*make sure is in little endin format*/
 
    /*_________________build_end_mask____________________*/
    maskEndUL =
-         pixelsPerLongSI
-      - ((xSL + widthUS) % pixelsPerLongSI);
+        def_bytesInUL_64bit
+      - ((xSL + widthUS) % def_bytesInUL_64bit);
       /*gives number of extra pixels at end*/
-   maskEndUL *= pngSTPtr->pixDepthUC;
-      /*convert the pixel count to number of bits*/
-
-   if(maskEndUL == (unsigned int) pixelsPerLongSI)
-      maskEndUL = 0;
-   maskEndUL = ((ul_64bit) -1) << maskEndUL;
+   maskEndUL = ((ul_64bit) -1) >> (maskEndUL << 3);
    maskEndUL = ulToLittle_endin(maskEndUL);
       /*make sure is in little endin format*/
 
@@ -901,6 +891,8 @@ addBar_st_mkPng(
    /*convert start and end to bytes*/
    startSL = byteLenToULLen_64bit(startSL);
    endSL = byteLenToULLen_64bit(endSL);
+   if(endSL)
+      --endSL;
 
    /*move to first pixel to change position*/
    pixAryUL += ySL * lenRowSL;
@@ -910,21 +902,17 @@ addBar_st_mkPng(
    *   - setup color stamps
    \*****************************************************/
 
-   if(pixelsPerLongSI >= 2)
-      colUC = (colUC << 4);
-   if(pixelsPerLongSI >= 4)
-      colUC = colUC << 2;
-   if(pixelsPerLongSI >= 8)
-      colUC = colUC << 1;
+   for(
+      bitUC = 0;
+      bitUC < def_bitsInUL_64bit;
+      bitUC += def_bitsPerChar_64bit
+   ) colByteUL |= (((ul_64bit) colUC) << bitUC);
 
-   for(bitUC = 0; bitUC < sizeof(ul_64bit); ++bitUC)
-      colByteUL |= (((ul_64bit) colUC) << (bitUC <<3));
+   colStartUL = colByteUL & maskStartUL;
+   colEndUL = colByteUL & maskEndUL;
 
-   colStartUL = ~maskStartUL;
-   colStartUL &= colByteUL;
-
-   colEndUL = ~maskEndUL;
-   colEndUL &= colByteUL;
+   maskStartUL = ~maskStartUL;
+   maskEndUL = ~maskEndUL;
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
    ^ Fun12 Sec03:

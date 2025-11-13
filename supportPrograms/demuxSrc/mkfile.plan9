@@ -1,0 +1,175 @@
+</$objtype/mkfile
+coreCFLAGS=-DPLAN9
+CFLAGS=-DNONE
+NAME=demux
+PREFIX=$home/bin
+
+genClust=../genClust
+genBio=../genBio
+genAln=../genAln
+genLib=../genLib
+
+objFiles= \
+   $genAln/demux.$O \
+   $genBio/gzSeqST.$O \
+   $genAln/kmerFind.$O \
+   $genAln/memwater.$O \
+   $genAln/alnSet.$O \
+   $genLib/base10str.$O \
+   $genLib/fileFun.$O \
+   $genLib/ulCp.$O \
+   $genAln/indexToCoord.$O \
+   $genBio/seqST.$O \
+   $genLib/shellSort.$O \
+   $genLib/inflate.$O \
+   $genLib/checkSum.$O \
+   $genLib/endin.$O \
+   $genLib/genMath.$O \
+   mainDemux.$O
+
+$(NAME): mainDemux.$O
+	$LD -o $NAME $objFiles
+
+mainDemux.$O: \
+	mainDemux.c \
+	$genAln/demux.$O \
+	$genBio/gzSeqST.$O \
+	../bioTools.h
+		$CC -o mainDemux.$O \
+			$CFLAGS $coreCFLAGS mainDemux.c
+
+$genAln/demux.$O: \
+	$genAln/demux.c \
+	$genAln/demux.h \
+	$genAln/kmerFind.$O \
+	$genLib/endLine.h
+	 	$CC -o $genAln/demux.$O \
+			$CFLAGS $coreCFLAGS \
+			$genAln/demux.c
+
+$genBio/gzSeqST.$O: \
+	$genBio/gzSeqST.c \
+	$genBio/gzSeqST.h \
+	$genBio/seqST.$O \
+ 	$genLib/inflate.$O
+		$CC -o $genBio/gzSeqST.$O \
+			$CFLAGS $coreCFLAGS \
+			$genBio/gzSeqST.c
+
+$genAln/kmerFind.$O: \
+	$genAln/kmerFind.c \
+	$genAln/kmerFind.h \
+	$genAln/memwater.$O \
+	$genLib/shellSort.$O \
+	$genLib/genMath.h \
+	$genBio/kmerBit.h
+		$CC -o $genAln/kmerFind.$O \
+			$CFLAGS $coreCFLAGS \
+			$genAln/kmerFind.c
+
+$genAln/memwater.$O: \
+	$genAln/memwater.c \
+	$genAln/memwater.h \
+	$genAln/alnSet.$O \
+	$genAln/indexToCoord.$O \
+	$genBio/seqST.$O \
+	$genLib/genMath.h
+		$CC -o $genAln/memwater.$O \
+			$CFLAGS $coreCFLAGS \
+			$genAln/memwater.c
+
+$genAln/alnSet.$O: \
+	$genAln/alnSet.c \
+	$genAln/alnDefs.h \
+	$genLib/fileFun.$O \
+	$genLib/ulCp.$O \
+	$genLib/base10str.$O \
+	$genAln/alnDefs.h \
+	$genLib/endLine.h
+		$CC -o $genAln/alnSet.$O \
+			$CFLAGS $coreCFLAGS \
+			$genAln/alnSet.c
+
+$genLib/base10str.$O: \
+	$genLib/base10str.c \
+	$genLib/base10str.h
+		$CC -o $genLib/base10str.$O \
+			$CFLAGS $coreCFLAGS \
+			$genLib/base10str.c
+
+$genLib/fileFun.$O: \
+	$genLib/fileFun.c \
+	$genLib/fileFun.h \
+	$genLib/ulCp.$O
+		$CC -o $genLib/fileFun.$O \
+			$CFLAGS $coreCFLAGS \
+			$genLib/fileFun.c
+
+$genLib/ulCp.$O: \
+	$genLib/ulCp.c \
+	$genLib/ulCp.h
+		$CC -o $genLib/ulCp.$O \
+			$CFLAGS $coreCFLAGS \
+			$genLib/ulCp.c
+
+$genAln/indexToCoord.$O: \
+	$genAln/indexToCoord.c \
+	$genAln/indexToCoord.h
+		$CC -o $genAln/indexToCoord.$O \
+			$CFLAGS $coreCFLAGS \
+			$genAln/indexToCoord.c
+
+$genBio/seqST.$O: \
+	$genBio/seqST.c \
+	$genBio/seqST.h \
+	$genLib/fileFun.$O
+		$CC -o $genBio/seqST.$O \
+			$CFLAGS $coreCFLAGS \
+			$genBio/seqST.c
+
+$genLib/shellSort.$O: \
+	$genLib/shellSort.c \
+	$genLib/shellSort.h
+		$CC -o $genLib/shellSort.$O \
+			$CFLAGS $coreCFLAGS \
+			$genLib/shellSort.c
+
+$genLib/inflate.$O: \
+	$genLib/inflate.c \
+	$genLib/inflate.h \
+	$genLib/checkSum.$O \
+	$genLib/ulCp.$O \
+	$genLib/genMath.$O \
+	$genLib/endLine.h
+		$CC -o $genLib/inflate.$O \
+			$CFLAGS $coreCFLAGS \
+			$genLib/inflate.c
+
+$genLib/checkSum.$O: \
+	$genLib/checkSum.c \
+	$genLib/checkSum.h \
+	$genLib/endin.$O
+	$CC -o $genLib/checkSum.$O \
+		$CFLAGS $coreCFLAGS \
+		$genLib/checkSum.c
+
+$genLib/endin.$O: \
+	$genLib/endin.c \
+	$genLib/endin.h
+		$CC -o $genLib/endin.$O \
+			$CFLAGS $coreCFLAGS \
+			$genLib/endin.c
+
+$genLib/genMath.$O: \
+	$genLib/genMath.c \
+	$genLib/genMath.h
+		$CC -o $genLib/genMath.$O \
+			$CFLAGS $coreCFLAGS \
+			$genLib/genMath.c
+
+install:
+	mv $(NAME) $(PREFIX)
+	chmod a+x $(PREFIX)/$(NAME)
+
+clean:
+	rm $(objFiles)

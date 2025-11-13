@@ -823,7 +823,14 @@ lineTo_samEntry(
    ^   - get the query id from the buffer
    \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
 
-   blank_samEntry(samSTPtr);
+   if(! samSTPtr->cigTypeStr)
+   { /*If: need to setup memory*/
+      if(setup_samEntry(samSTPtr))
+        goto memErr_fun11_sec14;
+   } /*If: need to setup memory*/
+
+   else
+      blank_samEntry(samSTPtr);
 
    /*This is a comment*/
    if(buffStr[0] == '@')
@@ -833,13 +840,16 @@ lineTo_samEntry(
     ` hard to tell
    */
 
-   tmpSI = lenStrNull_ulCp(buffStr, def_tab_ulCp, '\t');
+   tmpSI = endWhite_ulCp(buffStr);
    if(tmpSI > 120)
       goto memErr_fun11_sec14;
 
    cpLen_ulCp(samSTPtr->qryIdStr, buffStr, tmpSI);
    samSTPtr->qryIdLenUC = (unsigned char) tmpSI;
-   buffStr += samSTPtr->qryIdLenUC + 1; /*+1 get off tab*/
+
+   buffStr += samSTPtr->qryIdLenUC + 1;
+   while(*buffStr && *buffStr < 33)
+      ++buffStr;
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
    ^ Fun11 Sec03:
@@ -847,12 +857,11 @@ lineTo_samEntry(
    \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
 
    buffStr +=
-      strToUS_base10str(
-         buffStr,
-         &samSTPtr->flagUS
-      ); /*Get the flag for the alignment*/
+      strToUS_base10str(buffStr, &samSTPtr->flagUS);
+      /*Get the flag for the alignment*/
 
-   ++buffStr; /*Get off the tab*/
+   while(*buffStr && *buffStr < 33)
+      ++buffStr;
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
    ^ Fun11 Sec04:
@@ -867,16 +876,17 @@ lineTo_samEntry(
    samSTPtr->refIdLenUC = (unsigned char) tmpSI;
    buffStr += samSTPtr->refIdLenUC + 1; /*+1 get off tab*/
 
+   while(*buffStr && *buffStr < 33)
+      ++buffStr;
+
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
    ^ Fun11 Sec05:
    ^   - get reference position
    \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
 
    buffStr +=
-      strToUI_base10str(
-         buffStr,
-         &samSTPtr->refStartUI
-      ); /*Get the starting base in the reference*/
+      strToUI_base10str(buffStr, &samSTPtr->refStartUI);
+      /*Get the starting base in the reference*/
 
     /*Convert the starting positionto index 0*/
    samSTPtr->refStartUI -= (samSTPtr->refStartUI > 0);
@@ -889,12 +899,11 @@ lineTo_samEntry(
    \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
 
    buffStr +=
-      strToUC_base10str(
-         buffStr,
-         &samSTPtr->mapqUC
-      ); /*Get the mapping quality of the alignment*/
+      strToUC_base10str(buffStr, &samSTPtr->mapqUC);
+      /*Get the mapping quality of the alignment*/
 
-   ++buffStr; /*Get off the tab*/
+   while(*buffStr && *buffStr < 33)
+      ++buffStr;
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
    ^ Fun11 Sec07:
@@ -1029,7 +1038,7 @@ lineTo_samEntry(
          /*Case: This is an softmasked region*/
       } /*Switch: Check the cigar entry type*/
 
-      ++buffStr; /*Get off the tab*/
+      ++buffStr; /*move to next cigar entry*/
       ++samSTPtr->cigLenUI;
    } /*Loop: Read in the cigar entry*/
 
@@ -1070,14 +1079,12 @@ lineTo_samEntry(
    /*Not sure which is better here*/
    samSTPtr->rnextLenUC =
       (unsigned char)
-      cpDelim_ulCp(
-         samSTPtr->rNextStr,
-         buffStr,
-         def_tab_ulCp,
-         '\t'
-      ); /*Copy the query id/name*/
+      cpWhite_ulCp(samSTPtr->rNextStr, buffStr);
+      /*Copy the query id/name*/
 
    buffStr += samSTPtr->rnextLenUC + 1; /*+1 get off tab*/
+   while(*buffStr && *buffStr < 33)
+      ++buffStr;
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
    ^ Fun11 Sec09:
@@ -1092,7 +1099,8 @@ lineTo_samEntry(
 
    samSTPtr->pNextSI -= (samSTPtr->pNextSI > 0);
 
-   ++buffStr; /*Get off the tab*/
+   while(*buffStr && *buffStr < 33)
+      ++buffStr;
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
    ^ Fun11 Sec10:
@@ -1105,7 +1113,8 @@ lineTo_samEntry(
          &samSTPtr->tLenSI
        ); /*Get the number of bases for this type*/
 
-   ++buffStr; /*Get off the tab*/
+   while(*buffStr && *buffStr < 33)
+      ++buffStr;
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
    ^ Fun11 Sec11:
@@ -1113,15 +1122,16 @@ lineTo_samEntry(
    \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
 
    if(samSTPtr->readLenUI == 0 && buffStr[0] != '*')
-      samSTPtr->readLenUI =
-         (unsigned int)
-         lenStr_ulCp(buffStr, def_tab_ulCp, '\t');
+      samSTPtr->readLenUI = endWhite_ulCp(buffStr);
 
    else if(buffStr[0] == '*')
    { /*Else If: There  is no sequence entry*/
       samSTPtr->seqStr[0] = '*';
       samSTPtr->seqStr[1] = '\0';
+
       buffStr += 2;
+      while(*buffStr && *buffStr < 33)
+         ++buffStr;
 
       goto noQEntry;
    } /*Else If: There  is no sequence entry*/
@@ -1157,29 +1167,32 @@ lineTo_samEntry(
    );
 
    buffStr += samSTPtr->readLenUI + 1; /*+1 gets off tab*/
+   while(*buffStr && *buffStr < 33)
+      ++buffStr;
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
    ^ Fun11 Sec12:
    ^   - Get q-score entry
    \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
 
-   if(buffStr[0] == '*' && buffStr[1] < 32)
+   if(buffStr[0] == '*' && buffStr[1] < 33)
    { /*If: there is no q-score entry*/
-      noQEntry:
+      noQEntry:;
 
       samSTPtr->qStr[0] = '*';
       samSTPtr->qStr[1] = '\0';
+
       buffStr += 2;
+      while(*buffStr && *buffStr < 33)
+         ++buffStr;
    } /*If: there is no q-score entry*/
 
    else
    { /*Else: is a q-score entry*/
       buffStr +=
-         cpQEntry_samEntry(
-            samSTPtr,
-            buffStr,
-            0
-         ) + 1;
+         cpQEntry_samEntry(samSTPtr, buffStr, 0) + 1;
+      while(*buffStr && *buffStr < 33)
+         ++buffStr;
    } /*Else: is a q-score entry*/
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
@@ -1187,7 +1200,7 @@ lineTo_samEntry(
    ^   - copy extra entry; after strict sam entries
    \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
    
-   extraEntry:
+   extraEntry:;
 
    if(! buffStr || *buffStr == '\0')
    { /*If: no extra entry*/
@@ -1353,7 +1366,14 @@ get_samEntry(
    ^   - get the query id from the buffer
    \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
 
-   blank_samEntry(samSTPtr);
+   if(! samSTPtr->cigTypeStr)
+   { /*If: samSTPtr has no memory added*/
+      if( setup_samEntry(samSTPtr) )
+         goto memErr_fun12_sec14;
+   } /*If: samSTPtr has no memory added*/
+
+   else
+      blank_samEntry(samSTPtr);
 
    do{ /*Loop: get past white space*/
       lenSL =
@@ -1377,17 +1397,26 @@ get_samEntry(
    } /*If: comment*/
  
 
-   tmpSL = lenStrNull_ulCp(buffStr, def_tab_ulCp, '\t');
+   tmpSL = endWhite_ulCp(buffStr);
    if(tmpSL > 120)
       goto memErr_fun12_sec14;
    cpLen_ulCp( samSTPtr->qryIdStr, buffStr, tmpSL);
 
    samSTPtr->qryIdLenUC = (unsigned char) tmpSL;
-   posSI = tmpSL;
 
-   if(buffStr[posSI] != '\t')
+   while(buffStr[tmpSL] && buffStr[tmpSL] < 33)
+      ++tmpSL;
+
+   if(! buffStr[tmpSL])
       goto fileErr_fun12_sec14;
-   ++posSI; /*get off tab*/
+   else if(buffStr[tmpSL - 1] == '\t')
+      ;
+   else if(buffStr[tmpSL - 1] == ' ')
+      ;
+   else
+      goto fileErr_fun12_sec14;
+
+   posSI = tmpSL;
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
    ^ Fun12 Sec03:
@@ -1397,31 +1426,42 @@ get_samEntry(
    posSI +=
      strToUS_base10str(&buffStr[posSI],&samSTPtr->flagUS);
 
-   if(buffStr[posSI] != '\t')
+
+   while(buffStr[posSI] && buffStr[posSI] < 33)
+      ++posSI;
+
+   if(! buffStr[posSI])
       goto fileErr_fun12_sec14;
-   ++posSI; /*Get off the tab*/
+   else if(buffStr[posSI - 1] == '\t')
+      ;
+   else if(buffStr[posSI - 1] == ' ')
+      ;
+   else
+      goto fileErr_fun12_sec14;
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
    ^ Fun12 Sec04:
    ^   - read in the reference name/id
    \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
 
-   tmpSL = lenStrNull_ulCp(buffStr, def_tab_ulCp, '\t');
-   if(tmpSL > 120)
-      goto memErr_fun12_sec14;
-
-   tmpSL =
-     lenStrNull_ulCp(&buffStr[posSI], def_tab_ulCp, '\t');
+   tmpSL = endWhite_ulCp(&buffStr[posSI]);
    if(tmpSL > 120)
       goto memErr_fun12_sec14;
    cpLen_ulCp(samSTPtr->refIdStr, &buffStr[posSI], tmpSL);
-
    samSTPtr->refIdLenUC = (unsigned char) tmpSL;
-   posSI += tmpSL;
 
-   if(buffStr[posSI] != '\t')
+   posSI += tmpSL;
+   while(buffStr[posSI] && buffStr[posSI] < 33)
+      ++posSI;
+
+   if(! buffStr[posSI])
       goto fileErr_fun12_sec14;
-   ++posSI; /*get off tab*/
+   else if(buffStr[posSI - 1] == '\t')
+      ;
+   else if(buffStr[posSI - 1] == ' ')
+      ;
+   else
+      goto fileErr_fun12_sec14;
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
    ^ Fun12 Sec05:
@@ -1437,9 +1477,17 @@ get_samEntry(
    /*Convert the starting positionto index 0*/
    samSTPtr->refStartUI -= (samSTPtr->refStartUI > 0);
 
-   if(buffStr[posSI] != '\t')
+   while(buffStr[posSI] && buffStr[posSI] < 33)
+      ++posSI;
+
+   if(! buffStr[posSI])
       goto fileErr_fun12_sec14;
-   ++posSI; /*Get off the tab*/
+   else if(buffStr[posSI - 1] == '\t')
+      ;
+   else if(buffStr[posSI - 1] == ' ')
+      ;
+   else
+      goto fileErr_fun12_sec14;
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
    ^ Fun12 Sec06:
@@ -1452,9 +1500,17 @@ get_samEntry(
          &samSTPtr->mapqUC
       ); /*get mapping quality of alignment*/
 
-   if(buffStr[posSI] != '\t')
+   while(buffStr[posSI] && buffStr[posSI] < 33)
+      ++posSI;
+
+   if(! buffStr[posSI])
       goto fileErr_fun12_sec14;
-   ++posSI; /*Get off the tab*/
+   else if(buffStr[posSI - 1] == '\t')
+      ;
+   else if(buffStr[posSI - 1] == ' ')
+      ;
+   else
+      goto fileErr_fun12_sec14;
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
    ^ Fun12 Sec07:
@@ -1496,11 +1552,7 @@ get_samEntry(
       if(posSI + 16 >= size_fun12)
       { /*If: need more buffer*/
          lenSL -= posSI;
-         cpLen_ulCp(
-            buffStr,
-            &buffStr[posSI],
-            lenSL
-         );
+         cpLen_ulCp(buffStr, &buffStr[posSI], lenSL);
 
          lenSL +=
             getLine_fileFun(
@@ -1665,13 +1717,20 @@ get_samEntry(
       posSI = 0;
    } /*Else: need more data*/
 
-   if(buffStr[posSI] != '\t')
+   if(buffStr[posSI] == '\t')
+      ;
+   else if(buffStr[posSI] == ' ')
+      ;
+   else
       goto fileErr_fun12_sec14;
-   ++posSI;
+
+   while(buffStr[posSI] < 33)
+      ++posSI;
+   if(! buffStr[posSI])
+      goto fileErr_fun12_sec14;
 
 
-   tmpSL =
-     lenStrNull_ulCp(&buffStr[posSI], def_tab_ulCp, '\t');
+   tmpSL = endWhite_ulCp(&buffStr[posSI]);
    if(tmpSL > 120)
       goto memErr_fun12_sec14;
 
@@ -1679,9 +1738,16 @@ get_samEntry(
    samSTPtr->rnextLenUC = (unsigned char) tmpSL;
    posSI += tmpSL;
 
-   if(buffStr[posSI] != '\t')
+   while(buffStr[posSI] && buffStr[posSI] < 33)
+      ++posSI;
+   if(! buffStr[posSI])
       goto fileErr_fun12_sec14;
-   ++posSI;
+   else if(buffStr[posSI - 1] == '\t')
+      ;
+   else if(buffStr[posSI - 1] == ' ')
+      ;
+   else
+      goto fileErr_fun12_sec14;
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
    ^ Fun12 Sec09:
@@ -1695,9 +1761,16 @@ get_samEntry(
       );
    samSTPtr->pNextSI -= (samSTPtr->pNextSI > 0);
 
-   if(buffStr[posSI] != '\t')
+   while(buffStr[posSI] && buffStr[posSI] < 33)
+      ++posSI;
+   if(! buffStr[posSI])
       goto fileErr_fun12_sec14;
-   ++posSI;
+   else if(buffStr[posSI - 1] == '\t')
+      ;
+   else if(buffStr[posSI - 1] == ' ')
+      ;
+   else
+      goto fileErr_fun12_sec14;
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
    ^ Fun12 Sec10:
@@ -1710,9 +1783,16 @@ get_samEntry(
          &samSTPtr->tLenSI
        ); /*Get the number of bases for this type*/
 
-   if(buffStr[posSI] != '\t')
+   while(buffStr[posSI] && buffStr[posSI] < 33)
+      ++posSI;
+   if(! buffStr[posSI])
       goto fileErr_fun12_sec14;
-   ++posSI;
+   else if(buffStr[posSI - 1] == '\t')
+      ;
+   else if(buffStr[posSI - 1] == ' ')
+      ;
+   else
+      goto fileErr_fun12_sec14;
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
    ^ Fun12 Sec11:
@@ -1744,8 +1824,7 @@ get_samEntry(
    *   - get sequence in buffer
    \*****************************************************/
 
-   tmpSL =
-     lenStrNull_ulCp(&buffStr[posSI], def_tab_ulCp, '\t');
+   tmpSL = endWhite_ulCp(&buffStr[posSI]);
 
    if(tmpSL + posSI < lenSL)
    { /*If: went beyond sequence*/
@@ -1805,14 +1884,12 @@ get_samEntry(
          if(! lenSL)
             goto fileErr_fun12_sec14;
          tmpSL =
-            lenStrNull_ulCp(
-               &samSTPtr->seqStr[samSTPtr->readLenUI],
-               def_tab_ulCp,
-               '\t'
+            endWhite_ulCp(
+               &samSTPtr->seqStr[samSTPtr->readLenUI]
             );
 
          samSTPtr->readLenUI += tmpSL;
-         if(samSTPtr->seqStr[samSTPtr->readLenUI] == '\t')
+         if(samSTPtr->seqStr[samSTPtr->readLenUI] < 33)
             break;
       } /*Loop: get sequence*/
 
@@ -1906,22 +1983,31 @@ get_samEntry(
       posSI = 0;
    } /*Else: need to get more data*/
 
-   if(buffStr[posSI] != '\t')
+   while(buffStr[posSI] && buffStr[posSI] < 33)
+      ++posSI;
+   if(! buffStr[posSI])
       goto fileErr_fun12_sec14;
-   ++posSI;
+   else if(buffStr[posSI - 1] == '\t')
+      ;
+   else if(buffStr[posSI - 1] == ' ')
+      ;
+   else
+      goto fileErr_fun12_sec14;
 
    /*****************************************************\
    * Fun12 Sec12 Sub02:
    *   - no q-score entry case
    \*****************************************************/
 
-   if(buffStr[posSI] == '*' && buffStr[posSI + 1] < 32)
+   if(buffStr[posSI] == '*' && buffStr[posSI + 1] < 33)
    { /*If: there is no q-score entry*/
       noQEntry_fun12_sec12:
 
       samSTPtr->qStr[0] = '*';
       samSTPtr->qStr[1] = '\0';
-      posSI += 1; /*tab is checked for later*/
+
+      while(buffStr[posSI] > 32)
+         ++posSI; /*tab/space is checked for later*/
    } /*If: there is no q-score entry*/
 
    /*****************************************************\
@@ -2022,6 +2108,8 @@ get_samEntry(
          goto checkCarriage_fun12_sec03_sub03;
       else if(buffStr[0] == '\t')
          goto extraFinish_fun12_sec13_sub04;
+      else if(buffStr[0] == ' ')
+         goto extraFinish_fun12_sec13_sub04;
       else
          goto fileErr_fun12_sec14;
    } /*Else If: need more buffer*/
@@ -2029,11 +2117,23 @@ get_samEntry(
    else if(commentBl)
       ;
 
-   else if(buffStr[posSI] != '\t')
-      goto fileErr_fun12_sec14;
+   else if(
+      buffStr[posSI] != '\t' && buffStr[posSI] != ' '
+   ) goto fileErr_fun12_sec14;
 
    else
-      ++posSI; /*get off tab*/
+   { /*Else: need to get past white space*/
+      while(buffStr[posSI] && buffStr[posSI] < 33)
+         ++posSI;
+      if(! buffStr[posSI])
+         goto fileErr_fun12_sec14;
+      else if(buffStr[posSI - 1] == '\t')
+         ;
+      else if(buffStr[posSI - 1] == ' ')
+         ;
+      else
+         goto fileErr_fun12_sec14;
+   } /*Else: need to get past white space*/
 
    /*****************************************************\
    * Fun12 Sec13 Sub02:
@@ -2042,7 +2142,7 @@ get_samEntry(
 
    if(posSI >= lenSL)
       goto extraFinish_fun12_sec13_sub04;
-      /*buffers last character was a tab*/
+      /*buffers last character was a tab or space*/
    else if(posSI < lenSL)
    { /*Else If: need to copy buffer*/
       tmpSL = lenSL - posSI;
@@ -2093,7 +2193,7 @@ get_samEntry(
 
 
    else
-   { /*Else If: get off tab*/
+   { /*Else If: get off tab or space*/
       buffStr[0] = fgetc((FILE *) samFILE);
       if(buffStr[0] == EOF)
          goto done_fun12_sec14;
@@ -2118,9 +2218,9 @@ get_samEntry(
          goto done_fun12_sec14;
       } /*Else If: end of line*/
 
-      else if(buffStr[0] != '\t')
+      else if(buffStr[0] != '\t' && buffStr[0] != ' ')
          goto fileErr_fun12_sec14;
-   } /*Else If: get off tab*/
+   } /*Else If: get off tab or space*/
 
    /*****************************************************\
    * Fun12 Sec13 Sub04:

@@ -70,6 +70,46 @@ memwater(
    struct alnSet *settings
 );
 
+/*-------------------------------------------------------\
+| Fun02: simple_memwater
+|   - performs a memory efficent Smith Waterman alignment
+|     on a pair of sequences that uses its own simple
+|     (match only) scoring matrix
+| Input;
+|   - qrySeqStr:
+|     o c-string with query sequence
+|   - qryLenSI:
+|     o length (index 1) of query sequence
+|   - refSeqStr:
+|     o c-string with reference sequence
+|   - refLenSI:
+|     o length (index 1) of reference sequence
+|   - coordArySI:
+|     o sigend int array of four elements to get the
+|       reference and query mapping coordiantes
+|       * index 0 is first aligned base in reference
+|       * index 1 is last aligned base in reference
+|       * index 2 is first aligned base in query
+|       * index 3 is last aligned base in query
+| Output:
+|  - Modifies:
+|    o refStartSL to have 1st reference base in alignment
+|    o refEndSL to have last reference base in alignment
+|    o qryStartSL to have first query base in alignment
+|    o qryEndSL to have last query base in alignment
+|  - Returns:
+|    o score for aligment
+|    o negative number for memory errors
+\-------------------------------------------------------*/
+signed long
+simple_memwater(
+   signed char *qrySeqStr,  /*query sequence*/
+   signed int qryLenSI,     /*length of query*/
+   signed char *refSeqStr,  /*reference sequence*/
+   signed int refLenSI,     /*length of reference*/
+   signed int coordArySI[]  /*gets mapping coordinates*/
+);
+
 #endif
 
 /*=======================================================\

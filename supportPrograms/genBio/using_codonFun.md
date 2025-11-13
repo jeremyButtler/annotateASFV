@@ -10,9 +10,10 @@ The codonFun files are for converting sequences to amino
 Files: codonFun.c and codonFun.h
 
 - Dependencies:
-  - ntTo2Bit.h form genBio
-  - revNtTo2Bit.h form genBio
-  - codonTbl.h form genBio
+  - ulCp.h from genLib (.h file only)
+  - ntTo2Bit.h from genBio
+  - revNtTo2Bit.h from genBio
+  - codonTbl.h from genBio
 
 # codonFun
 
@@ -52,16 +53,18 @@ signed char reverse_complement_aminoAcid =
 
 ## sequence translation (to amino acids)
 
-The sequenceToAA\_codonFun function translates a sequence.
+### forward sequence translation
+
+The seqToAA\_codonFun function translates a sequence.
 
 | Input | Use                                     |
 |:------|:----------------------------------------|
 |  1st  | c-string with sequence to traslate      |
 |  2nd  | c-string to hold translated sequence    |
 |  3rd  | position to start translation (index 0) |
-|  4th  | position to end translation (index 0)   |
+|  4th  | last base to translate                  |
 
-Table: inputs for sequenceToAA\_codonFun
+Table: inputs for sequToAA\_codonFun
 
 Make sure the 2nd input (gets ammino acid sequence) is
   large enough to hold the translated sequence
@@ -78,6 +81,55 @@ lengthAASL =
       aminoAcidStr,
       0,
       0
+   );
+```
+
+### reverse sequence translation
+
+The revSeqToAA\_codonFun function translates a reverse
+  complement sequence to an alignment.
+
+| Input | Use                                      |
+|:------|:-----------------------------------------|
+|  1st  | c-string with sequence to traslate       |
+|  2nd  | c-string to hold translated sequence     |
+|  3rd  | first base in sequence (last translated) |
+|  4th  | last base in sequence (first translated) |
+
+Table: inputs for revSeqToAA\_codonFun
+
+Make sure the 2nd input (gets ammino acid sequence) is
+  large enough to hold the translated sequence
+  (1 + sequence length / 3) or (1 + 4th input / 3). You
+  can specify the from the first base in sequence (3rd
+  input) to the end of the sequence by using `0` for the
+  length (4th input).
+
+```
+signed char *sequenceStr = "atgccctaa";
+signed char *aminoAcidStr[16];
+signed long lengthAASL = 0;
+
+lengthAASL = 
+   revSeqToAA_codonFun(
+      sequenceStr,
+      aminoAcidStr,
+      0, /*start at the frist base*/
+      0  /*find the end of the sequence*/
+   );
+```
+
+```
+signed char *sequenceStr = "tttttttttatgccctaa";
+signed char *aminoAcidStr[16];
+signed long lengthAASL = 0;
+
+lengthAASL = 
+   revSeqToAA_codonFun(
+      sequenceStr,
+      aminoAcidStr,
+      9, /*start at first a (should be 9th index)*/
+      0  /*find the end of the sequence*/
    );
 ```
 

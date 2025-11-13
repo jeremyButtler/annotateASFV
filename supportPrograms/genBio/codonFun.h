@@ -21,6 +21,9 @@
 '       single letter amino acid identity
 '   o fun07: seqToAA_codonFun
 '     - converts nucleotide sequence to amino acids
+'   o fun08: revSeqToAA_codonFun
+'     - converts a reverse complement nucleotide sequence
+'       to amino acid sequence
 '   o license:
 '     - licensing for this code (public domain / mit)
 \~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
@@ -202,7 +205,41 @@ seqToAA_codonFun(
    signed char *seqStr,
    signed char *aaStr,
    signed long startSL,
-   signed long stopSL
+   signed long endSL
+);
+
+/*-------------------------------------------------------\
+| Fun08: revSeqToAA_codonFun
+|  - converts a reverse complement nucleotide sequence to
+|    amino acid sequence
+| Input:
+|  - seqStr: 
+|    o c-string with the sequence to convert
+|  - aaStr:
+|    o c-string to hold the converted sequence, must be
+|      at least sequence / 3 bases long
+|  - startSL:
+|    o position to start translation at
+|    o use 0 for all sequence
+|  - endSL:
+|    o last base in sequence (first base to traslate)
+|    o use 0 for all sequence
+| Output:
+|  - Modifies:
+|    o aaStr to hold the amino acid sequence
+|      * on nucleotide errors, a '\0' is added after last
+|        correct call
+|  - Returns:
+|    o length (> 0) of returned ammino acid sequence
+|    o def_unkownNt_codonFun (< 0) for sequence errors
+|    o def_incomplete_codonFun (< 0) if had partial end
+\-------------------------------------------------------*/
+signed long
+revSeqToAA_codonFun(
+   signed char *seqStr,
+   signed char *aaStr,
+   signed long startSL,
+   signed long endSL
 );
 
 #endif

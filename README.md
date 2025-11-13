@@ -8,8 +8,13 @@ This repository is here as a tool to annotate African
 
 Memory usage is light, but it is slow. With GNU time it
   took 8 minutes with 10 Mb of ram to annotate the demo
-  ASFV genome. Also, it does not handle genes that use
-  exons and introns (ASFV does have use these) very well.
+  ASFV genome with the `-slow` flag. Also, it does not
+  handle genes that use exons and introns (ASFV does have
+  use these) very well.
+
+The `-fast` (default) form may not be quite as sensitive
+  (no idea), but for me GNU time clocked it at 7 seconds
+  and under 10 Mb of ram.
 
 This repository is under a dual license, pick the license
   (Unlicense or MIT) that works best for you.

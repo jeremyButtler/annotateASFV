@@ -53,8 +53,14 @@
 
 #define def_fqFile_mainMemwaterScan 0
 #define def_faFile_mainMemwaterScan 1
+#define def_filter_mainMemwaterScan 1/*filter alignments*/
+
+#define def_alnForDir_mainMemwaterScan 1
+#define def_alnRevDir_mainMemwaterScan 2
+#define def_alnDir_mainMemwaterScan (def_alnForDir_mainMemwaterScan | def_alnRevDir_mainMemwaterScan)
 
 #define def_minPercScore_mainMemwaterScan 0.90f
+#define def_minScore_mainMemwaterScan 0
 
 /*-------------------------------------------------------\
 | Fun01: pversion_mainMemwaterScan
@@ -255,6 +261,8 @@ phelp_mainMemwaterScan(
    *     - gap penalties
    *   o fun02 sec02 sub05 cat02:
    *     - score and match matrixes
+   *   o fun02 sec02 sub05 cat04:
+   *     - minimum score
    \*****************************************************/
 
    /*++++++++++++++++++++++++++++++++++++++++++++++++++++\
@@ -319,12 +327,12 @@ phelp_mainMemwaterScan(
 
    /*++++++++++++++++++++++++++++++++++++++++++++++++++++\
    + Fun02 Sec02 Sub05 Cat03:
-   +   - minimum score
+   +   - minimum percent score
    \++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
    fprintf(
       (FILE *) outFILE,
-      "  -min-score %f: [Optional]%s",
+      "  -perc-score %.2f: [Optional]%s",
       def_minPercScore_mainMemwaterScan,
       str_endLine
    );
@@ -339,6 +347,112 @@ phelp_mainMemwaterScan(
       (FILE *) outFILE,
       "      to print (keep) an alignment%s",
       str_endLine
+   );
+
+   /*++++++++++++++++++++++++++++++++++++++++++++++++++++\
+   + Fun02 Sec02 Sub05 Cat04:
+   +   - minimum score
+   \++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+
+   fprintf(
+      (FILE *) outFILE,
+      "  -score %i: [Optional]%s",
+      def_minScore_mainMemwaterScan,
+      str_endLine
+   );
+
+   fprintf(
+      (FILE *) outFILE,
+      "    o minimum score needed to keep alignment%s",
+      str_endLine
+   );
+
+   /*++++++++++++++++++++++++++++++++++++++++++++++++++++\
+   + Fun02 Sec02 Sub05 Cat05:
+   +   - filter alignments
+   \++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+
+   if(def_filter_mainMemwaterScan)
+      fprintf(
+         (FILE *) outFILE,
+         "  -filter: [yes]%s",
+         str_endLine
+      );
+   else
+      fprintf(
+         (FILE *) outFILE,
+         "  -filter: [no]%s",
+         str_endLine
+      );
+
+   fprintf(
+     (FILE *) outFILE,
+     "    o filter alignments to remove nested alignments"
+   );
+   fprintf((FILE *) outFILE, "%s", str_endLine);
+
+   fprintf(
+      (FILE *) outFILE,
+      "    o disable with `-no-filter`%s",
+      str_endLine
+   );
+
+   /*++++++++++++++++++++++++++++++++++++++++++++++++++++\
+   + Fun02 Sec02 Sub05 Cat06:
+   +   - alignment direction
+   \++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+
+   if(
+        def_alnDir_mainMemwaterScan
+      & def_alnForDir_mainMemwaterScan
+   ) fprintf(
+        (FILE *) outFILE,
+        "  -forward: [yes]%s",
+        str_endLine
+     );
+
+   else
+      fprintf(
+         (FILE *) outFILE,
+         "  -forward: [no]%s",
+         str_endLine
+      );
+   fprintf(
+     (FILE *) outFILE,
+     "    o align query in forward direction%s",
+     str_endLine
+   );
+   fprintf(
+     (FILE *) outFILE,
+     "    o disable with `-no-forward`%s",
+     str_endLine
+   );
+
+
+   if(
+        def_alnDir_mainMemwaterScan
+      & def_alnRevDir_mainMemwaterScan
+   ) fprintf(
+        (FILE *) outFILE,
+        "  -reverse: [yes]%s",
+        str_endLine
+     );
+
+   else
+      fprintf(
+         (FILE *) outFILE,
+         "  -reverse: [no]%s",
+         str_endLine
+      );
+   fprintf(
+     (FILE *) outFILE,
+     "    o align query in reverse direction%s",
+     str_endLine
+   );
+   fprintf(
+     (FILE *) outFILE,
+     "    o disable with `-no-reverse`%s",
+     str_endLine
    );
 
    /*****************************************************\
@@ -398,6 +512,18 @@ phelp_mainMemwaterScan(
 |     o c-string pionter to point to output file name
 |   - minPercScoreFPtr:
 |     o float pointer to get the minimum percent score
+|   - minScoreSLPtr:
+|     o signed long pointer to get the minimum score
+|   - filterBlPtr:
+|     o signed char pointer to get if filtering (1) or
+|       not (0)
+|   - dirSCPtr:
+|     o signed char pointer to get direction of the
+|       alignment
+|       * def_alnForDir_memwaterScan for foward
+|       * def_alnRevDir_memwaterScan for reverse
+|       * def_alnForDir_memwaterScan |
+|         def_alnRevDir_memwaterScan for both
 |   - alnSetSTPtr:
 |     o pointer to alnSet struct with alingment settings
 | Output:
@@ -418,6 +544,9 @@ input_mainMemwaterScan(
    signed char *qryTypeSCPtr,
    signed char **outFileStrPtr,
    float *minPercScoreFPtr,
+   signed long *minScoreSLPtr,
+   signed char *filterBlPtr,
+   signed char *dirSCPtr,
    struct alnSet *alnSetSTPtr
 ){ /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\
    ' Fun03 TOC:
@@ -547,6 +676,14 @@ input_mainMemwaterScan(
       *     - check scoring matrix input
       *   o fun03 sec03 sub02 cat03:
       *     - check scoring match input
+      *   o fun03 sec03 sub02 cat04:
+      *     - check minimum percent score
+      *   o fun03 sec03 sub02 cat05:
+      *     - check minimum score
+      *   o fun03 sec03 sub02 cat06:
+      *     - check if filtering
+      *   o fun03 sec03 sub02 cat07:
+      *     - check direction
       \**************************************************/
 
       /*+++++++++++++++++++++++++++++++++++++++++++++++++\
@@ -723,7 +860,7 @@ input_mainMemwaterScan(
 
       else if(
          ! eqlNull_ulCp(
-            (signed char *) "-min-score",
+            (signed char *) "-perc-score",
             (signed char *) argAryStr[siArg]
          )
       ){ /*Else If: minimum percent score*/
@@ -736,7 +873,7 @@ input_mainMemwaterScan(
          { /*If: invalid input*/
             fprintf(
                stderr,
-               "-min-score %s is non-numeric%s",
+               "-perc-score %s is non-numeric%s",
                argAryStr[siArg],
                str_endLine
             );
@@ -753,7 +890,7 @@ input_mainMemwaterScan(
          { /*Else If: value greater then 100%*/
             fprintf(
                stderr,
-               "-min-score %s can not be over 100%s",
+               "-perc-score %s can not be over 100%s",
                argAryStr[siArg],
                str_endLine
             );
@@ -765,7 +902,7 @@ input_mainMemwaterScan(
          { /*Else If: negative input*/
             fprintf(
                stderr,
-               "-min-score %s can not be negative%s",
+               "-perc-score %s can not be negative%s",
                argAryStr[siArg],
                str_endLine
             );
@@ -773,6 +910,99 @@ input_mainMemwaterScan(
             goto err_fun03_sec04;     
          } /*Else If: negative input*/
       }  /*Else If: minimum percent score*/
+
+      /*+++++++++++++++++++++++++++++++++++++++++++++++++\
+      + Fun03 Sec03 Sub02 Cat05:
+      +   - check minimum score
+      \+++++++++++++++++++++++++++++++++++++++++++++++++*/
+
+      else if(
+         ! eqlNull_ulCp(
+            (signed char *) "-score",
+            (signed char *) argAryStr[siArg]
+         )
+      ){ /*Else If: minimum score*/
+         ++siArg;
+         errStr = (signed char *) argAryStr[siArg];
+         errStr +=
+            strToSL_base10str(errStr, minScoreSLPtr);
+
+         if(*errStr > 32)
+         { /*If: invalid input*/
+            fprintf(
+               stderr,
+               "-score %s is non-numeric%s",
+               argAryStr[siArg],
+               str_endLine
+            );
+
+            goto err_fun03_sec04;     
+         } /*If: invalid input*/
+
+         else if(*minPercScoreFPtr < 0)
+         { /*Else If: negative input*/
+            fprintf(
+               stderr,
+               "-score %s can not be negative%s",
+               argAryStr[siArg],
+               str_endLine
+            );
+
+            goto err_fun03_sec04;     
+         } /*Else If: negative input*/
+      }  /*Else If: minimum score*/
+
+      /*+++++++++++++++++++++++++++++++++++++++++++++++++\
+      + Fun03 Sec03 Sub02 Cat06:
+      +   - check if filtering
+      \+++++++++++++++++++++++++++++++++++++++++++++++++*/
+
+      else if(
+         ! eqlNull_ulCp(
+            (signed char *) "-filter",
+            (signed char *) argAryStr[siArg]
+         )
+      ) *filterBlPtr = 1;
+
+      else if(
+         ! eqlNull_ulCp(
+            (signed char *) "-no-filter",
+            (signed char *) argAryStr[siArg]
+         )
+      ) *filterBlPtr = 0;
+
+      /*+++++++++++++++++++++++++++++++++++++++++++++++++\
+      + Fun03 Sec03 Sub02 Cat07:
+      +   - check direction
+      \+++++++++++++++++++++++++++++++++++++++++++++++++*/
+
+      else if(
+         ! eqlNull_ulCp(
+            (signed char *) "-forward",
+            (signed char *) argAryStr[siArg]
+         )
+      ) *dirSCPtr |= def_alnForDir_mainMemwaterScan;
+
+      else if(
+         ! eqlNull_ulCp(
+            (signed char *) "-no-forward",
+            (signed char *) argAryStr[siArg]
+         )
+      ) *dirSCPtr &= ~def_alnForDir_mainMemwaterScan;
+
+      else if(
+         ! eqlNull_ulCp(
+            (signed char *) "-reverse",
+            (signed char *) argAryStr[siArg]
+         )
+      ) *dirSCPtr |= def_alnRevDir_mainMemwaterScan;
+
+      else if(
+         ! eqlNull_ulCp(
+            (signed char *) "-no-reverse",
+            (signed char *) argAryStr[siArg]
+         )
+      ) *dirSCPtr &= ~def_alnRevDir_mainMemwaterScan;
 
       /**************************************************\
       * Fun03 Sec03 Sub03:
@@ -978,8 +1208,12 @@ main(
 
    signed char errSC = 0;
    signed long seqSL = 0;   /*query sequence on*/
+   signed char filterBl = def_filter_mainMemwaterScan;
+   signed char dirFlagSC = def_alnDir_mainMemwaterScan;
    float minPercScoreF=def_minPercScore_mainMemwaterScan;
+   signed long minScoreSL = def_minScore_mainMemwaterScan;
 
+   signed char didRevBl = 0;
    signed char *qryFileStr = 0;
    signed char qryTypeSC = def_fqFile_mainMemwaterScan;
 
@@ -988,6 +1222,7 @@ main(
 
 
    /*values for final return*/
+   signed char dirCharSC = 0;
    signed char *outFileStr = 0;
    signed int siNt = 0; 
 
@@ -1052,6 +1287,9 @@ main(
          &qryTypeSC,
          &outFileStr,
          &minPercScoreF,
+         &minScoreSL,
+         &filterBl,
+         &dirFlagSC,
          &setStackST
       );
 
@@ -1060,6 +1298,24 @@ main(
       --errSC;
       goto cleanUp_main_sec04;
    } /*If: had input error*/
+
+   if(! dirFlagSC)
+   { /*If: no alignment*/
+      fprintf(
+         stderr,
+         "both -no-forward and -no-reverse are used,%s",
+         str_endLine
+      );
+
+      fprintf(
+         stderr,
+         " which prevents any aligmnet, pick one%s",
+         str_endLine
+      );
+
+      errSC = 8;
+      goto cleanUp_main_sec04;
+   } /*If: no alignment*/
 
    /*****************************************************\
    * Main Sec02 Sub03:
@@ -1291,7 +1547,7 @@ main(
    /*print out the header*/
    fprintf(
       outFILE,
-      "qry_id\tref_id\tscore\tperc_score\tmax_score"
+      "qry_id\tref_id\tdir\tscore\tperc_score\tmax_score"
    );
 
    fprintf(
@@ -1319,6 +1575,12 @@ main(
 
       seqToIndex_alnSet(qryStackST.seqStr);
 
+      if(! (dirFlagSC & def_alnForDir_mainMemwaterScan) )
+         goto revAln_main_sec03_sub03;
+      else
+         dirCharSC = 'F';
+
+      algin_main_sec03_sub01:;
       maxScoreSL =
          maxScore_alnSet(
             qryStackST.seqStr,
@@ -1333,9 +1595,7 @@ main(
       *   o main sec03 sub02 cat01:
       *     - align input
       *   o main sec03 sub02 cat02:
-      *     - print the best score for each query base
-      *   o main sec03 sub02 cat03:
-      *     - print the best score for each reference base
+      *     - print the best score for each base
       \**************************************************/
 
       /*+++++++++++++++++++++++++++++++++++++++++++++++++\
@@ -1357,42 +1617,55 @@ main(
          break;
       } /*If: memory error*/
 
+      if(filterBl)
+      { /*If: filtering alignments*/
+         filter_memwaterScan(
+            &alnStackST,
+            maxScoreSL * minPercScoreF, /*percent cutoff*/
+            minScoreSL                  /*hard cutoff*/
+         );
+      } /*If: filtering alignments*/
+
       /*+++++++++++++++++++++++++++++++++++++++++++++++++\
       + Main Sec03 Sub02 Cat02:
-      +   - print the best score for each query base
+      +   - print the best score for each base
       \+++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-      for(siNt = 0; siNt < alnStackST.qryLenSI; ++siNt)
-      { /*Loop: print out query base best scores*/
-         scoreF = alnStackST.qryScoreArySL[siNt];
+      for(siNt = 0; siNt < alnStackST.outLenSL; ++siNt)
+      { /*Loop: print out best scores*/
+         if(alnStackST.scoreArySL[siNt] < minScoreSL)
+            continue; /*under minimum score*/
+ 
+         scoreF = alnStackST.scoreArySL[siNt];
          if(scoreF < 0)
             continue; /*no score assigned, very unlikely*/
          scoreF /= (float) def_scoreAdj_alnDefs;
 
          percScoreF =
-              (float) alnStackST.qryScoreArySL[siNt]
+              (float) alnStackST.scoreArySL[siNt]
             / (float) maxScoreSL;
          if(percScoreF < minPercScoreF)
             continue; /*score is to low*/
 
          indexToCoord(
             alnStackST.refLenSI,
-            alnStackST.qryStartArySL[siNt],
+            alnStackST.startArySL[siNt],
             &refStartUL,
             &qryStartUL
          );
          indexToCoord(
             alnStackST.refLenSI,
-            alnStackST.qryEndArySL[siNt],
+            alnStackST.endArySL[siNt],
             &refEndUL,
             &qryEndUL
          );
 
          fprintf(
            outFILE,
-           "%s\t%s\t%0.2f\t%0.2f\t%li",
+           "%s\t%s\t%c\t%0.2f\t%0.2f\t%li",
            qryStackST.idStr,
            refStackST.idStr,
+           dirCharSC,
            scoreF,
            percScoreF,
            maxScoreSL
@@ -1408,65 +1681,29 @@ main(
             qryStackST.seqLenSL,
             str_endLine
          );
-      } /*Loop: print out query base best scores*/
-
-      /*+++++++++++++++++++++++++++++++++++++++++++++++++\
-      + Main Sec03 Sub02 Cat03:
-      +   - print the best score for each reference base
-      \+++++++++++++++++++++++++++++++++++++++++++++++++*/
-
-      for(siNt = 0; siNt < alnStackST.refLenSI; ++siNt)
-      { /*Loop: print out reference base best scores*/
-         scoreF = alnStackST.refScoreArySL[siNt];
-         if(scoreF < 0)
-            continue; /*no score assigned, very unlikely*/
-         scoreF /= (float) def_scoreAdj_alnDefs;
-
-         percScoreF =
-              (float) alnStackST.refScoreArySL[siNt]
-            / (float) maxScoreSL;
-         if(percScoreF < minPercScoreF)
-            continue; /*score is to low*/
-
-         indexToCoord(
-            alnStackST.refLenSI,
-            alnStackST.refStartArySL[siNt],
-            &refStartUL,
-            &qryStartUL
-         );
-         indexToCoord(
-            alnStackST.refLenSI,
-            alnStackST.refEndArySL[siNt],
-            &refEndUL,
-            &qryEndUL
-         );
-
-         fprintf(
-           outFILE,
-           "%s\t%s\t%0.2f\t%0.2f\t%li",
-           qryStackST.idStr,
-           refStackST.idStr,
-           scoreF,
-           percScoreF,
-           maxScoreSL
-         ); /*non-coodinates*/
-         fprintf(
-            outFILE,
-            "\t%lu\t%lu\t%li\t%lu\t%lu\t%li%s",
-            refStartUL + 1,
-            refEndUL + 1,
-            refStackST.seqLenSL,
-            qryStartUL + 1,
-            qryEndUL + 1,
-            qryStackST.seqLenSL,
-            str_endLine
-         );
-      } /*Loop: print out reference base best scores*/
+      } /*Loop: print out best scores*/
 
       /**************************************************\
       * Main Sec03 Sub03:
       *   - get next query sequence
       \**************************************************/
+
+      revAln_main_sec03_sub03:;
+         if(didRevBl)
+            didRevBl = 0;
+         else if(
+            dirFlagSC & def_alnRevDir_mainMemwaterScan
+         ){ /*Else If: doing a reverse alignment*/
+            revCmpIndex_alnSet(
+               qryStackST.seqStr,
+               qryStackST.qStr,
+               qryStackST.seqLenSL
+            );
+
+            dirCharSC = 'R';
+            didRevBl = 1;
+            goto algin_main_sec03_sub01;
+         } /*Else If: doing a reverse alignment*/
 
       if(qryTypeSC == def_fqFile_mainMemwaterScan)
          errSC = getFq_seqST(seqFILE, &qryStackST);

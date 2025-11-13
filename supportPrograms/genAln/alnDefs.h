@@ -70,6 +70,9 @@
 #define def_scoreAdj_alnDefs 1
    /*adjust score for eDNA matrix (if wanted 100)*/
 
+#define def_matchScore_alnDefs 5
+#define def_snpScore_alnDefs -4
+
 /*-------------------------------------------------------\
 | Fun01: maxScore_alnDefs
 |   - finds maximum possible score for a sequence

@@ -18,15 +18,30 @@
 '   o fun05: getCoord_aln_memwaterScan
 '     - gets the coordinates for input base index for an
 '       aln_memwaterScan structure
-'   o fun06: qryByRefSort_aln_memwaterScan
-'     - sorts the query coordinates in a aln_memwaterScan
-'       structure by the reference coordinate
-'     - the sorting is first smallest query state, then
-'       highest score, then longest (ending base) length
-'   o fun07 memwaterScan:
+'   o fun06: swap_memwaterScan
+'     - swaps position in reference array
+'   o fun07: refCoordSort_aln_memwaterScan
+'     - sorts best bases alignments by reference start,
+'       query start, reference end (closest first), then
+'       and query end (closest first)
+'     - all negatives (non-alignment found) are pushed to
+'       the end
+'   o fun08: filter_memwaterScan
+'     - removes low scoring alignments and alignments that
+'       are nested alignments
+'   o fun09: merge_aln_memwaterScan
+'     - merges one aln_memwaterScan struct into another
+'       aln_memwaterScan struct
+'   o fun10 memwaterScan:
 '     - performs a memory efficent Smith Waterman scan
 '       (keep best alignment for each query/reference base)
 '       alignment on a pair of sequences
+'   o fun11: simple_memwaterScan
+'     - performs a memory efficent Smith Waterman scan
+'       (keep best alignment for each query/reference
+'       base) alignment on a pair of sequences
+'     - simple means no settings or seqST structure used
+'       and no match matrix
 '   o license:
 '     - licensing for this code (public domain / mit)
 \~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
@@ -86,6 +101,8 @@ blank_aln_memwaterScan(
    alnSTPtr->qryLenSI = 0;
    alnSTPtr->refOffsetSI = 0;
    alnSTPtr->qryOffsetSI = 0;
+
+   alnSTPtr->outLenSL = 0;
 } /*blank_aln_memwaterScan*/
 
 /*-------------------------------------------------------\
@@ -106,18 +123,14 @@ init_aln_memwaterScan(
    if(! alnSTPtr)
       return;
 
-   alnSTPtr->refStartArySL = 0;
-   alnSTPtr->refEndArySL = 0;
-   alnSTPtr->refScoreArySL = 0;
-
-   alnSTPtr->qryStartArySL = 0;
-   alnSTPtr->qryEndArySL = 0;
-   alnSTPtr->qryScoreArySL = 0;
-   alnSTPtr->qrySizeSI = 0;
-
+   alnSTPtr->startArySL = 0;
+   alnSTPtr->endArySL = 0;
    alnSTPtr->scoreArySL = 0;
-   alnSTPtr->indexArySL = 0;
-   alnSTPtr->dirArySC = 0;
+   alnSTPtr->outSizeSL = 0;
+
+   alnSTPtr->scoreRowSL = 0;
+   alnSTPtr->indexRowSL = 0;
+   alnSTPtr->dirRowSC = 0;
    alnSTPtr->rowSizeSI = 0;
 
    blank_aln_memwaterScan(alnSTPtr);
@@ -141,26 +154,19 @@ freeStack_aln_memwaterScan(
    if(! alnSTPtr)
       return;
 
-   if(alnSTPtr->refStartArySL)
-      free(alnSTPtr->refStartArySL);
-   if(alnSTPtr->refEndArySL)
-      free(alnSTPtr->refEndArySL);
-   if(alnSTPtr->refScoreArySL)
-      free(alnSTPtr->refScoreArySL);
-
-   if(alnSTPtr->qryStartArySL)
-      free(alnSTPtr->qryStartArySL);
-   if(alnSTPtr->qryEndArySL)
-      free(alnSTPtr->qryEndArySL);
-   if(alnSTPtr->qryScoreArySL)
-      free(alnSTPtr->qryScoreArySL);
-
+   if(alnSTPtr->startArySL)
+      free(alnSTPtr->startArySL);
+   if(alnSTPtr->endArySL)
+      free(alnSTPtr->endArySL);
    if(alnSTPtr->scoreArySL)
       free(alnSTPtr->scoreArySL);
-   if(alnSTPtr->indexArySL)
-      free(alnSTPtr->indexArySL);
-   if(alnSTPtr->dirArySC)
-      free(alnSTPtr->dirArySC);
+
+   if(alnSTPtr->scoreRowSL)
+      free(alnSTPtr->scoreRowSL);
+   if(alnSTPtr->indexRowSL)
+      free(alnSTPtr->indexRowSL);
+   if(alnSTPtr->dirRowSC)
+      free(alnSTPtr->dirRowSC);
 
    init_aln_memwaterScan(alnSTPtr);
 } /*freeStack_aln_memwaterScan*/
@@ -192,9 +198,6 @@ freeHeap_aln_memwaterScan(
 | Input:
 |   - baseSI:
 |     o base to get coordinates for
-|   - qryBl:
-|     o 1 if index is for the query array
-|     o 0 if index is for the reference array
 |   - refStartSIPtr:
 |     o signed int pointer that gets the reference start
 |   - refEndSIPtr:
@@ -207,130 +210,109 @@ freeHeap_aln_memwaterScan(
 |     o aln_memwaterScan struct pointer with coordinates
 | Output:
 |   - Modifies:
-|     o frees alnSTPtr; you must set the pointer to 0/null
+|     o refStartSIPtr to have reference starting position
+|     o refEndSIPtr to have reference ending position
+|     o qryStartSIPtr to have query starting position
+|     o qryEndSIPtr to have query ending position
 |   - Returns:
-|     o 0 for success
-|     o 1 if no position at index
+|     o score for success
+|     o 0 if no position at index
 |     o -1 for out of bounds error
 \-------------------------------------------------------*/
 signed char
 getCoord_aln_memwaterScan(
-   signed int baseSI,
-   signed char qryBl,         /*1: get from query array*/
+   signed long baseSL,        /*index to grab*/
    signed int *refStartSIPtr, /*gets reference start*/
    signed int *refEndSIPtr,   /*gets reference end*/
    signed int *qryStartSIPtr, /*gets query start*/
    signed int *qryEndSIPtr,   /*gets query end*/
    struct aln_memwaterScan *alnSTPtr
-){ /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\
-   ' Fun05 TOC:
-   '   - gets the coordinates for input base index for an
-   '     aln_memwaterScan structure
-   '   o fun05 sec01:
-   '     - variable declarations
-   '   o fun05 sec02:
-   '     - get query array coordaintes (if requested)
-   '   o fun05 sec03:
-   '     - get reference array coordaintes (if requested)
-   '   o fun05 sec04:
-   '     - return result
-   \~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-
-   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
-   ^ Fun05 Sec01:
-   ^   - variable declarations
-   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
-
+){
    unsigned long tmpRefUL = 0;
    unsigned long tmpQryUL = 0;
 
-   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
-   ^ Fun05 Sec02:
-   ^   - get query array coordaintes (if requested)
-   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
-   
-   if(qryBl)
-   { /*If: using the query array*/
-      if(baseSI > alnSTPtr->qryLenSI)
-         goto boundsErr_fun05_sec04;
-      else if(alnSTPtr->qryScoreArySL[baseSI] < 0)
-         goto noCoord_fun05_sec04;
+   if(baseSL > alnSTPtr->outLenSL)
+      goto boundsErr_fun05_sec04;
+   else if(alnSTPtr->scoreArySL[baseSL] < 0)
+      goto noCoord_fun05_sec04;
 
-      indexToCoord(
-         alnSTPtr->refLenSI,
-         alnSTPtr->qryStartArySL[baseSI],
-         &tmpRefUL,
-         &tmpQryUL
-      );
-      *qryStartSIPtr = tmpQryUL;
-      *refStartSIPtr = tmpRefUL;
+   indexToCoord(
+      alnSTPtr->refLenSI,
+      alnSTPtr->startArySL[baseSL],
+      &tmpRefUL,
+      &tmpQryUL
+   );
 
-      indexToCoord(
-         alnSTPtr->refLenSI,
-         alnSTPtr->qryEndArySL[baseSI],
-         &tmpRefUL,
-         &tmpQryUL
-      );
-      *qryEndSIPtr = tmpQryUL;
-      *refEndSIPtr = tmpRefUL;
-   } /*If: using the query array*/
+   *refStartSIPtr = tmpRefUL + alnSTPtr->refOffsetSI;
+   *qryStartSIPtr = tmpQryUL + alnSTPtr->qryOffsetSI;
 
-   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
-   ^ Fun05 Sec03:
-   ^   - get reference array coordaintes (if requested)
-   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+   indexToCoord(
+      alnSTPtr->refLenSI,
+      alnSTPtr->endArySL[baseSL],
+      &tmpRefUL,
+      &tmpQryUL
+   );
+   *refEndSIPtr = tmpRefUL + alnSTPtr->refOffsetSI;
+   *qryEndSIPtr = tmpQryUL + alnSTPtr->qryOffsetSI;
 
-   else
-   { /*Else: using the reference array*/
-      if(baseSI > alnSTPtr->refLenSI)
-         goto boundsErr_fun05_sec04;
-      else if(alnSTPtr->refScoreArySL[baseSI] < 0)
-         goto noCoord_fun05_sec04;
-
-      indexToCoord(
-         alnSTPtr->refLenSI,
-         alnSTPtr->refStartArySL[baseSI],
-         &tmpRefUL,
-         &tmpQryUL
-      );
-      *qryStartSIPtr = tmpQryUL;
-      *refStartSIPtr = tmpRefUL;
-
-      indexToCoord(
-         alnSTPtr->refLenSI,
-         alnSTPtr->refEndArySL[baseSI],
-         &tmpRefUL,
-         &tmpQryUL
-      );
-      *qryEndSIPtr = tmpQryUL;
-      *refEndSIPtr = tmpRefUL;
-   } /*Else: using the reference array*/
-
-   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
-   ^ Fun05 Sec04:
-   ^   - return result
-   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
-
-   *refStartSIPtr += alnSTPtr->refOffsetSI;
-   *refEndSIPtr += alnSTPtr->refOffsetSI;
-
-   *qryStartSIPtr += alnSTPtr->qryOffsetSI;
-   *qryEndSIPtr += alnSTPtr->qryOffsetSI;
-
-   return 0;
+   return alnSTPtr->scoreArySL[baseSL];
 
    noCoord_fun05_sec04:;
-      return 1;
+      return 0;
    boundsErr_fun05_sec04:;
       return -1;
 } /*getCoord_aln_memwaterScan*/
 
 /*-------------------------------------------------------\
-| Fun06: qryByRefSort_aln_memwaterScan
-|   - sorts the query coordinates in a aln_memwaterScan
-|     structure by the reference coordinate
-|   - the sorting is first smallest query state, then
-|     highest score, then longest (ending base) length
+| Fun06: swap_memwaterScan
+|   - swaps position in reference array
+| Input:
+|   - alnSTPtr:
+|     o aln_memwaterScan struct pointer to swap positions
+|   - firstSI:
+|     o first index to swap
+|   - secSI:
+|     o second index to swap
+| Output:
+|   - Modifies:
+|     o scoreArySL, startArySL, endArySL in alnSTPtr to
+|       have firstSI and secSI index's swapped
+\-------------------------------------------------------*/
+void
+swap_memwaterScan(
+   struct aln_memwaterScan *alnSTPtr,
+   signed int firstSI,
+   signed int secSI
+){
+   alnSTPtr->scoreArySL[firstSI] ^=
+      alnSTPtr->scoreArySL[secSI];
+   alnSTPtr->scoreArySL[secSI] ^=
+      alnSTPtr->scoreArySL[firstSI];
+   alnSTPtr->scoreArySL[firstSI] ^=
+      alnSTPtr->scoreArySL[secSI];
+
+   alnSTPtr->startArySL[firstSI] ^=
+      alnSTPtr->startArySL[secSI];
+   alnSTPtr->startArySL[secSI] ^=
+      alnSTPtr->startArySL[firstSI];
+   alnSTPtr->startArySL[firstSI] ^=
+      alnSTPtr->startArySL[secSI];
+
+   alnSTPtr->endArySL[firstSI] ^=
+      alnSTPtr->endArySL[secSI];
+   alnSTPtr->endArySL[secSI] ^=
+      alnSTPtr->endArySL[firstSI];
+   alnSTPtr->endArySL[firstSI] ^=
+      alnSTPtr->endArySL[secSI];
+} /*swap_memwaterScan*/
+
+/*-------------------------------------------------------\
+| Fun07: refCoordSort_aln_memwaterScan
+|   - sorts best bases alignments by reference start,
+|     query start, reference end (closest first), then
+|     and query end (closest first)
+|   - all negatives (non-alignment found) are pushed to
+|     the end
 | Input:
 |   - alnSTPtr:
 |     o aln_memwaterScan struct pionter to sort
@@ -342,27 +324,30 @@ getCoord_aln_memwaterScan(
 |       kept in sync with qryStartArySL
 \-------------------------------------------------------*/
 void
-qryByRefSort_aln_memwaterScan(
+refCoordSort_aln_memwaterScan(
    struct aln_memwaterScan *alnSTPtr
 ){ /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\
-   ' Fun06 TOC:
-   '   - sorts the query coordinates in a aln_memwaterScan
-   '     structure by the reference coordinate
-   '   o fun06 sec01:
+   ' Fun07 TOC:
+   '   - sorts best bases alignments by reference start,
+   '     query start, reference end (closest first), then
+   '     query end (closest first), and finally score.
+   '     all negatives (non-alignment found) are pushed to
+   '     the end
+   '   o fun07 sec01:
    '     - variable declerations
-   '   o fun06 sec02:
+   '   o fun07 sec02:
    '     - find the number of rounds to sort for
-   '   o fun06 sec03:
+   '   o fun07 sec03:
    '     - sort the arrays
    \~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
-   ^ Fun06 Sec01:
+   ^ Fun07 Sec01:
    ^   - variable declerations
    \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
 
    /*Number of elements to sort*/
-   signed int numElmSI = alnSTPtr->qryLenSI - 1;
+   signed long numElmSL = alnSTPtr->outLenSL - 1;
 
    /*Number of sorting rounds*/
    signed int subSI = 0;
@@ -370,42 +355,49 @@ qryByRefSort_aln_memwaterScan(
    signed int lastSI = 0;
    signed int onSI = 0;
 
-   signed int onQrySI = 0;
-   signed int compareQrySI = 0;
+   unsigned long onRefStartUL;
+   unsigned long onRefEndUL;
+   unsigned long cmpRefStartUL;
+   unsigned long cmpRefEndUL;
+
+   unsigned long onQryStartUL;
+   unsigned long onQryEndUL;
+   unsigned long cmpQryStartUL;
+   unsigned long cmpQryEndUL;
 
    /*Variables to incurment loops*/
    signed int siIndex = 0;
    signed int siElm = 0;
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
-   ^ Fun06 Sec02:
+   ^ Fun07 Sec02:
    ^   - find the max search value (number rounds to sort)
    \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
 
-   if(numElmSI <= 0)
+   if(numElmSL <= 0)
       return;
 
    /*Recursion formsla: h[0] = 1, h[n] = 3 * h[n - 1] +1*/
    subSI = 1; /*Initialzie first array*/
 
-   while(subSI < numElmSI - 1)
+   while(subSI < numElmSL - 1)
       subSI = (3 * subSI) + 1;
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
-   ^ Fun06 Sec03:
+   ^ Fun07 Sec03:
    ^   - sort arrays
-   ^   o fun06 sec03 sub01:
+   ^   o fun07 sec03 sub01:
    ^     - outer loops for shell short
-   ^   o fun06 sec03 sub02:
+   ^   o fun07 sec03 sub02:
    ^     - compare and check if need to do first swap
-   ^   o fun06 sec03 sub03:
+   ^   o fun07 sec03 sub03:
    ^     - do inner (insertion) swaps
-   ^   o fun06 sec03 sub04:
+   ^   o fun07 sec03 sub04:
    ^     - move to the next element in the group
    \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
 
    /*****************************************************\
-   * Fun06 Sec03 Sub01:
+   * Fun07 Sec03 Sub01:
    *   - outer loops for shell short
    \*****************************************************/
 
@@ -417,89 +409,71 @@ qryByRefSort_aln_memwaterScan(
 
          for(
             siElm = siIndex;
-            siElm + subSI <= numElmSI;
+            siElm + subSI <= numElmSL;
             siElm += subSI
          ){ /*Loop: swap elements in subarray*/
             nextSI = siElm + subSI;
 
             /********************************************\
-            * Fun06 Sec03 Sub02:
+            * Fun07 Sec03 Sub02:
             *   - compare & check if need to do first swap
             \********************************************/
 
-            if(alnSTPtr->qryScoreArySL[siElm] < 0)
-               goto swapOuter_fun06_sec03_sub02;
-            else if(alnSTPtr->qryScoreArySL[nextSI] < 0)
-               goto nextElm_fun06_sec03_sub04;
- 
-            onQrySI =
-               qryCoord_indexToCoord(
-                  alnSTPtr->qryLenSI,
-                  alnSTPtr->qryStartArySL[siElm]
-               );
+            if(alnSTPtr->startArySL[siElm] < 0)
+               goto swapOuter_fun07_sec03_sub02;
+            else if(alnSTPtr->startArySL[nextSI] < 0)
+               goto nextElm_fun07_sec03_sub04;
 
-            compareQrySI =
-               qryCoord_indexToCoord(
-                  alnSTPtr->qryLenSI,
-                  alnSTPtr->qryStartArySL[nextSI]
-               );
+            indexToCoord(
+               alnSTPtr->refLenSI,
+               alnSTPtr->startArySL[siElm],
+               &onRefStartUL,  
+               &onQryStartUL
+            );
 
-            if(onQrySI > compareQrySI)
-               ;
-            else if(onQrySI > compareQrySI)
-               goto swapOuter_fun06_sec03_sub02;
-            else if(
-                 alnSTPtr->qryScoreArySL[siElm]
-               < alnSTPtr->qryScoreArySL[nextSI]
-            ) goto swapOuter_fun06_sec03_sub02;
+            indexToCoord(
+               alnSTPtr->refLenSI,
+               alnSTPtr->startArySL[nextSI],
+               &cmpRefStartUL,  
+               &cmpQryStartUL
+            );
 
-            else if(
-                  alnSTPtr->qryScoreArySL[siElm]
-               == alnSTPtr->qryScoreArySL[nextSI]
-            ){ /*Else If: had equal scores*/
-                  onQrySI =
-                     qryCoord_indexToCoord(
-                        alnSTPtr->qryLenSI,
-                        alnSTPtr->qryEndArySL[siElm]
-                     );
+            indexToCoord(
+               alnSTPtr->refLenSI,
+               alnSTPtr->endArySL[siElm],
+               &onRefEndUL,  
+               &onQryEndUL
+            );
 
-                  compareQrySI =
-                     qryCoord_indexToCoord(
-                        alnSTPtr->qryLenSI,
-                        alnSTPtr->qryEndArySL[nextSI]
-                     );
+            indexToCoord(
+               alnSTPtr->refLenSI,
+               alnSTPtr->endArySL[nextSI],
+               &cmpRefEndUL,  
+               &cmpQryEndUL
+            );
 
-               if(onQrySI > compareQrySI)
-                  goto swapOuter_fun06_sec03_sub02;
-            }  /*Else If: had equal scores*/
+            if(onRefStartUL > cmpRefStartUL)
+               goto swapOuter_fun07_sec03_sub02;
+            else if(onRefStartUL < cmpRefStartUL)
+               goto nextElm_fun07_sec03_sub04;
 
-            else
-            { /*Else: check if have length*/
-               swapOuter_fun06_sec03_sub02:;
+            else if(onQryStartUL > cmpQryStartUL)
+               goto swapOuter_fun07_sec03_sub02;
+            else if(onQryStartUL < cmpQryStartUL)
+               goto nextElm_fun07_sec03_sub04;
 
-               alnSTPtr->qryStartArySL[siElm] ^=
-                  alnSTPtr->qryStartArySL[nextSI];
-               alnSTPtr->qryStartArySL[nextSI] ^=
-                  alnSTPtr->qryStartArySL[siElm];
-               alnSTPtr->qryStartArySL[siElm] ^=
-                  alnSTPtr->qryStartArySL[nextSI];
+            else if(onRefEndUL > cmpRefEndUL)
+               goto swapOuter_fun07_sec03_sub02;
+            else if(onRefEndUL < cmpRefEndUL)
+               goto nextElm_fun07_sec03_sub04;
 
-               alnSTPtr->qryEndArySL[siElm] ^=
-                  alnSTPtr->qryEndArySL[nextSI];
-               alnSTPtr->qryEndArySL[nextSI] ^=
-                  alnSTPtr->qryEndArySL[siElm];
-               alnSTPtr->qryEndArySL[siElm] ^=
-                  alnSTPtr->qryEndArySL[nextSI];
-
-               alnSTPtr->qryScoreArySL[siElm] ^=
-                  alnSTPtr->qryScoreArySL[nextSI];
-               alnSTPtr->qryScoreArySL[nextSI] ^=
-                  alnSTPtr->qryScoreArySL[siElm];
-               alnSTPtr->qryScoreArySL[siElm] ^=
-                  alnSTPtr->qryScoreArySL[nextSI];
+            else if(onQryEndUL > cmpQryEndUL)
+            { /*Else If: need to swap (qry is later)*/
+               swapOuter_fun07_sec03_sub02:;
+               swap_memwaterScan(alnSTPtr, siElm, nextSI);
 
                /*****************************************\
-               * Fun06 Sec03 Sub03:
+               * Fun07 Sec03 Sub03:
                *   - do inner (insertion) swaps
                \*****************************************/
 
@@ -510,95 +484,430 @@ qryByRefSort_aln_memwaterScan(
                { /*loop: move swapped element back*/
                   lastSI -= subSI;
 
-                  if(alnSTPtr->qryScoreArySL[onSI] < 0)
+                  if(alnSTPtr->startArySL[onSI] < 0)
                      break;
-                  else if(
-                     alnSTPtr->qryScoreArySL[lastSI] < 0
-                  ) goto swapInner_fun06_sec03_sub03;
-                   
-                  onQrySI =
-                     qryCoord_indexToCoord(
-                        alnSTPtr->qryLenSI,
-                        alnSTPtr->qryStartArySL[onSI]
-                     );
+                  else if(alnSTPtr->startArySL[lastSI] <0)
+                     goto swapInner_fun07_sec03_sub04;
 
-                  compareQrySI =
-                     qryCoord_indexToCoord(
-                        alnSTPtr->qryLenSI,
-                        alnSTPtr->qryStartArySL[lastSI]
-                     );
+                  indexToCoord(
+                     alnSTPtr->refLenSI,
+                     alnSTPtr->startArySL[onSI],
+                     &onRefStartUL,  
+                     &onQryStartUL
+                  );
 
-                  if(onQrySI > compareQrySI)
-                     break; /*Positioned the element*/
-                  else if(onQrySI == compareQrySI)
-                  { /*Else If: same reference position*/
-                     if(
-                          alnSTPtr->qryScoreArySL[onSI]
-                        < alnSTPtr->qryScoreArySL[lastSI]
-                     ) break;
+                  indexToCoord(
+                     alnSTPtr->refLenSI,
+                     alnSTPtr->startArySL[lastSI],
+                     &cmpRefStartUL,  
+                     &cmpQryStartUL
+                  );
 
-                     else if(
-                           alnSTPtr->qryScoreArySL[onSI]
-                        == alnSTPtr->qryScoreArySL[lastSI]
-                     ){ /*Else If: have same score*/
+                  indexToCoord(
+                     alnSTPtr->refLenSI,
+                     alnSTPtr->endArySL[onSI],
+                     &onRefEndUL,  
+                     &onQryEndUL
+                  );
 
-                        onQrySI =
-                           qryCoord_indexToCoord(
-                              alnSTPtr->qryLenSI,
-                              alnSTPtr->qryEndArySL[onSI]
-                           );
+                  indexToCoord(
+                     alnSTPtr->refLenSI,
+                     alnSTPtr->endArySL[lastSI],
+                     &cmpRefEndUL,  
+                     &cmpQryEndUL
+                  );
 
-                        compareQrySI =
-                           qryCoord_indexToCoord(
-                             alnSTPtr->qryLenSI,
-                             alnSTPtr->qryEndArySL[lastSI]
-                           );
-                        if(onQrySI <= compareQrySI)
-                           break;
-                     }  /*Else If: have same score*/
-                  } /*Else If: same reference position*/
+                  if(onRefStartUL > cmpRefStartUL)
+                     break;
+                  else if(onRefStartUL < cmpRefStartUL)
+                     ;
 
-                  swapInner_fun06_sec03_sub03:;
-                     alnSTPtr->qryStartArySL[onSI] ^=
-                        alnSTPtr->qryStartArySL[lastSI];
-                     alnSTPtr->qryStartArySL[lastSI] ^=
-                        alnSTPtr->qryStartArySL[onSI];
-                     alnSTPtr->qryStartArySL[onSI] ^=
-                        alnSTPtr->qryStartArySL[lastSI];
+                  else if(onQryStartUL > cmpQryStartUL)
+                     break;
+                  else if(onQryStartUL < cmpQryStartUL)
+                     ;
 
-                     alnSTPtr->qryEndArySL[onSI] ^=
-                        alnSTPtr->qryEndArySL[lastSI];
-                     alnSTPtr->qryEndArySL[lastSI] ^=
-                        alnSTPtr->qryEndArySL[onSI];
-                     alnSTPtr->qryEndArySL[onSI] ^=
-                        alnSTPtr->qryEndArySL[lastSI];
+                  else if(onRefEndUL > cmpRefEndUL)
+                     break;
+                  else if(onRefEndUL < cmpRefEndUL)
+                     ;
 
-                     alnSTPtr->qryScoreArySL[onSI] ^=
-                        alnSTPtr->qryScoreArySL[lastSI];
-                     alnSTPtr->qryScoreArySL[lastSI] ^=
-                        alnSTPtr->qryScoreArySL[onSI];
-                     alnSTPtr->qryScoreArySL[onSI] ^=
-                        alnSTPtr->qryScoreArySL[lastSI];
+                  else if(onQryEndUL > cmpQryEndUL)
+                     break;
 
-                     onSI = lastSI;
+                  swapInner_fun07_sec03_sub04:;
+                  swap_memwaterScan(alnSTPtr,onSI,lastSI);
+                  onSI = lastSI;
                } /*Loop: move swapped element back*/
-            } /*If I need to swap elements*/
+            }  /*Else If: need to swap (qry is later)*/
 
             /********************************************\
-            * Fun06 Sec03 Sub04:
+            * Fun07 Sec03 Sub04:
             *   - move to the next element in the group
             \********************************************/
 
-            nextElm_fun06_sec03_sub04:;
+            nextElm_fun07_sec03_sub04:;
          } /*Loop: swap elements in subarray*/
       } /*Loop: though sub array*/
 
       subSI = (subSI - 1) / 3; /*Move to next round*/
    } /*Loop: all rounds*/
-} /*qryByRefSort_aln_memwaterScan*/
+} /*refCoordSort_aln_memwaterScan*/
 
 /*-------------------------------------------------------\
-| Fun07: memwaterScan
+| Fun08: filter_memwaterScan
+|   - removes low scoring alignments and alignments that
+|     are nested alignments
+| Input:
+|   - alnSTPtr:
+|     o pointer to aln_memwaterScan struct with alignments
+|       to filter
+|   - minScoreSL:
+|     o minimum score for an alignment
+|   - minScoreTwoSL:
+|     o second minimum score for an alignment
+|       * use when you are putting a percent minimum score
+|         for minScoreSL
+|       * allows for a hard cutoff and a percent cuttoff
+| Output:
+|   - Modifies:
+|     o startArySL, endArySL, and scoreArySL in alnSTPtr
+|       to only have high scoring, non-nested alignments
+|     o outLenSL to have the new number of alignments
+|   - Returns:
+|     o number of kept alignments
+\-------------------------------------------------------*/
+signed long
+filter_memwaterScan(
+   struct aln_memwaterScan *alnSTPtr,
+   signed long minScoreSL,
+   signed long minScoreTwoSL
+){ /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\
+   ' Fun08 TOC:
+   '   - removes low scoring alignments and alignments
+   '     that are nested alignments
+   '   o fun08 sec01:
+   '     - variable declarations
+   '   o fun08 sec02:
+   '     - remove low scoring alignments & sort position
+   '   o fun08 sec03:
+   '     - mark nested alignments
+   '   o fun08 sec04:
+   '     - remove nested alignments
+   '   o fun08 sec05:
+   '     - resort by coordinate and return
+   \~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun08 Sec01:
+   ^   - variable declarations
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   unsigned long refStartUL = 0;
+   unsigned long refEndUL = 0;
+   unsigned long refLastStartUL = 0;
+   unsigned long refLastEndUL = 0;
+
+   unsigned long qryStartUL = 0;
+   unsigned long qryEndUL = 0;
+   unsigned long qryLastStartUL = 0;
+   unsigned long qryLastEndUL = 0;
+
+   signed long keptPosSL = -1;
+   signed long posSL = 0;
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun08 Sec02:
+   ^   - remove low scoring alignments & sort by position
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   posSL = 0;
+   while(posSL < alnSTPtr->outLenSL)
+   { /*Loop: filter out low scoring alignments*/
+      if(
+            alnSTPtr->scoreArySL[posSL] < minScoreSL
+         || alnSTPtr->scoreArySL[posSL] < minScoreTwoSL
+      ){ /*If: under minimum score*/
+         swap_memwaterScan(
+            alnSTPtr,
+            posSL,
+            alnSTPtr->outLenSL - 1
+         );
+
+         --alnSTPtr->outLenSL;
+      } /*If: under minimum score*/
+
+      else
+         ++posSL;
+   } /*Loop: filter out low scoring alignments*/
+
+   /*need to sort so nested alignments are next to each
+   `  other (in most cases)
+   */
+   refCoordSort_aln_memwaterScan(alnSTPtr);
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun08 Sec03:
+   ^   - mark nested alignments
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   keptPosSL = -1;
+   posSL = 0;
+   while(posSL < alnSTPtr->outLenSL)
+   { /*Loop: filter out alignments*/
+      indexToCoord(
+         alnSTPtr->refLenSI,
+         alnSTPtr->startArySL[posSL],
+         &refStartUL,  
+         &qryStartUL
+      );
+
+      indexToCoord(
+         alnSTPtr->refLenSI,
+         alnSTPtr->endArySL[posSL],
+         &refEndUL,  
+         &qryEndUL
+      );
+
+      if(refStartUL != refLastStartUL)
+         keptPosSL = posSL;
+
+      else if(qryStartUL != qryLastStartUL)
+         keptPosSL = posSL;
+
+      else if(
+            refEndUL - 1 != refLastEndUL
+         && refEndUL != refLastEndUL
+      ) keptPosSL = posSL;
+
+      else if(
+            qryEndUL - 1 != qryLastEndUL
+         && qryEndUL != qryLastEndUL
+      ) keptPosSL = posSL;
+
+      else
+      { /*Else: this is an overlapping alignment*/
+         if(keptPosSL < 0)
+            keptPosSL = posSL;
+
+         else if(
+               alnSTPtr->scoreArySL[keptPosSL]
+            >= alnSTPtr->scoreArySL[posSL]
+         ) alnSTPtr->startArySL[posSL] *= -1;
+
+         else
+         { /*Else: keeping new position*/
+            alnSTPtr->startArySL[keptPosSL] *= -1;
+            keptPosSL = posSL;
+         } /*Else: keeping new position*/
+
+         goto nextAln_fun08_sec0x_sub0x;
+      } /*Else: this is an overlapping alignment*/
+
+      nextAln_fun08_sec0x_sub0x:;
+         refLastStartUL = refStartUL; 
+         refLastEndUL = refEndUL; 
+
+         qryLastStartUL = qryStartUL; 
+         qryLastEndUL = qryEndUL; 
+         ++posSL;
+   } /*Loop: filter out alignments*/
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun08 Sec04:
+   ^   - remove nested alignments
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   posSL = 0;
+   while(posSL < alnSTPtr->outLenSL)
+   { /*Loop: remove flagged alignments*/
+      if(alnSTPtr->startArySL[posSL] < 0)
+      { /*If: flagged this for removal*/
+         alnSTPtr->startArySL[posSL] *= -1;
+         swap_memwaterScan(
+            alnSTPtr,
+            posSL,
+            alnSTPtr->outLenSL - 1
+         );
+
+         --alnSTPtr->outLenSL;
+      } /*If: flagged this for removal*/
+
+      else
+         ++posSL;
+   } /*Loop: remove flagged alignments*/
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun08 Sec05:
+   ^   - resort by coordinate and return
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   refCoordSort_aln_memwaterScan(alnSTPtr);
+   return alnSTPtr->outLenSL;
+} /*filter_memwaterScan*/
+
+/*-------------------------------------------------------\
+| Fun09: merge_aln_memwaterScan
+|   - merges one aln_memwaterScan struct into another
+|     aln_memwaterScan struct
+| Input:
+|   - mergeSTPtr:
+|     o aln_memwaterScan struct to merge into the final
+|       structure
+|   - outSTPtr:
+|     o aln_memwaterScan struct to merge mergeSTPtr into
+|   - minScoreSL:
+|     o minumum score to keep score in mergeSTPtr
+| Output:
+|   - Modifies:
+|     o variables in outSTPtr to include variables in
+|       mergeSTPtr and outSTPtr
+|   - Returns:
+|     o 0 for success
+|     o -1 if reference lengths differ (no way to merge)
+|     o -2 for memory errors
+\-------------------------------------------------------*/
+signed char
+merge_aln_memwaterScan(
+   struct aln_memwaterScan *mergeSTPtr,
+   struct aln_memwaterScan *outSTPtr,
+   signed long minScoreSL
+){ /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\
+   ' Fun09 TOC:
+   '   - merges one aln_memwaterScan struct into another
+   '     aln_memwaterScan struct
+   '   o fun09 sec01:
+   '     - variable declarations
+   '   o fun09 sec02:
+   '     - allocate memory for arrays
+   '   o fun09 sec03:
+   '     - merge alignments
+   '   o fun09 sec04:
+   '     - return the results
+   \~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun09 Sec01:
+   ^   - variable declarations
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   signed long *tmpSLPtr = 0;
+   signed long newOutLenSL =
+      mergeSTPtr->outLenSL + outSTPtr->outLenSL;
+   signed long slAln = 0;
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun09 Sec02:
+   ^   - allocate memory for arrays
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   if(! outSTPtr->refLenSI)
+      outSTPtr->refLenSI = mergeSTPtr->refLenSI;
+   else if(outSTPtr->refLenSI != mergeSTPtr->refLenSI)
+      goto differentRefsErr_fun09_sec0x;
+
+   if(newOutLenSL >= outSTPtr->outSizeSL)
+   { /*If: need to resize the output struct*/
+      if(! outSTPtr->startArySL)
+         tmpSLPtr =
+            malloc(
+               (newOutLenSL + 16) * sizeof(unsigned long)
+            );
+      else
+         tmpSLPtr =
+            realloc(
+               outSTPtr->startArySL,
+               (newOutLenSL + 16) * sizeof(unsigned long)
+            );
+      if(! tmpSLPtr)
+         goto memErr_fun09_sec0x;
+      outSTPtr->startArySL = tmpSLPtr;
+      tmpSLPtr = 0;
+
+      if(! outSTPtr->endArySL)
+         tmpSLPtr =
+            malloc(
+               (newOutLenSL + 16) * sizeof(unsigned long)
+            );
+      else
+         tmpSLPtr =
+            realloc(
+               outSTPtr->endArySL,
+               (newOutLenSL + 16) * sizeof(unsigned long)
+            );
+      if(! tmpSLPtr)
+         goto memErr_fun09_sec0x;
+      outSTPtr->endArySL = tmpSLPtr;
+      tmpSLPtr = 0;
+
+      if(! outSTPtr->scoreArySL)
+         tmpSLPtr =
+            malloc(
+               (newOutLenSL + 16) * sizeof(unsigned long)
+            );
+      else
+         tmpSLPtr =
+            realloc(
+               outSTPtr->scoreArySL,
+               (newOutLenSL + 16) * sizeof(unsigned long)
+            );
+      if(! tmpSLPtr)
+         goto memErr_fun09_sec0x;
+      outSTPtr->scoreArySL = tmpSLPtr;
+      tmpSLPtr = 0;
+
+      outSTPtr->outSizeSL = newOutLenSL + 16;
+   } /*If: need to resize the output struct*/
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun09 Sec03:
+   ^   - merge alignments
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   if(outSTPtr->qryLenSI < mergeSTPtr->qryLenSI)
+      outSTPtr->qryLenSI = mergeSTPtr->qryLenSI;
+      /*make sure always have the max query lengths*/
+
+   for(slAln = 0; slAln < mergeSTPtr->outLenSL; ++slAln)
+   { /*Loop: merge alignments*/
+      if(mergeSTPtr->scoreArySL[slAln] < minScoreSL)
+         continue;
+
+      outSTPtr->startArySL[outSTPtr->outLenSL] =
+         mergeSTPtr->startArySL[slAln];
+      outSTPtr->endArySL[outSTPtr->outLenSL] =
+         mergeSTPtr->endArySL[slAln];
+      outSTPtr->scoreArySL[outSTPtr->outLenSL] =
+         mergeSTPtr->scoreArySL[slAln];
+      ++outSTPtr->outLenSL;
+   } /*Loop: merge alignments*/
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun09 Sec04:
+   ^   - return the results
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   newOutLenSL = 0;
+   goto ret_fun09_sec0x;
+
+   differentRefsErr_fun09_sec0x:;
+      newOutLenSL = -1;
+      goto ret_fun09_sec0x;
+  
+   memErr_fun09_sec0x:;
+      newOutLenSL = -1;
+      goto ret_fun09_sec0x;
+
+   ret_fun09_sec0x:;
+      if(tmpSLPtr)
+         free(tmpSLPtr);
+      tmpSLPtr = 0;
+
+      return newOutLenSL;
+} /*merge_aln_memwaterScan*/
+
+/*-------------------------------------------------------\
+| Fun10: memwaterScan
 |   - performs a memory efficent Smith Waterman scan
 |     (keep best alignment for each query/reference base)
 |     alignment on a pair of sequences
@@ -621,7 +930,7 @@ qryByRefSort_aln_memwaterScan(
 |  - Modifies:
 |    o variables in alnSTPtr to have the new alignment
 |  - Returns:
-|    o score for aligment
+|    o score of the best alignment found
 |    o negative number for memory errors
 \-------------------------------------------------------*/
 signed long
@@ -631,50 +940,54 @@ memwaterScan(
    struct aln_memwaterScan *alnSTPtr,/*gets alignment*/
    struct alnSet *settings
 ){ /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\
-   ' Fun07 TOC: memwaterAln
+   ' Fun10 TOC:
+   '   - performs a memory efficent Smith Waterman scan
+   '     (keep best alignment for each query/reference
+   '     base) alignment on a pair of sequences
    '  - Run a memory efficent Waterman Smith alignment on
    '    input sequences
-   '  o fun07 sec01:
+   '  o fun10 sec01:
    '    - Variable declerations
-   '  o fun07 sec02:
+   '  o fun10 sec02:
    '    - Allocate memory for alignment
-   '  o fun07 sec03:
+   '  o fun10 sec03:
    '    - Fill in initial negatives for ref
    '  o fun0 sec04:
    '    - Fill the matrix with scores
-   '  o fun07 sec05:
+   '  o fun10 sec05:
    '    - Set up for returing matrix (clean up/wrap up)
    \~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
-   ^ Fun07 Sec01: Variable declerations
-   ^  o fun07 sec01 sub01:
+   ^ Fun10 Sec01: Variable declerations
+   ^  o fun10 sec01 sub01:
    ^    - Variables dealing with the query and reference
    ^      starting positions
-   ^  o fun07 sec01 sub02:
+   ^  o fun10 sec01 sub02:
    ^    - Variables holding the scores (only two rows)
-   ^  o fun07 sec01 sub03:
+   ^  o fun10 sec01 sub03:
    ^    - Directinol matrix variables
-   ^  o fun07 sec01 sub04:
+   ^  o fun10 sec01 sub04:
    ^    - Variables for building returend alignment array
    \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
 
    /*****************************************************\
-   * Fun07 Sec01 Sub01:
+   * Fun10 Sec01 Sub01:
    *  - Variables dealing with the query and reference
    *    starting positions
    \*****************************************************/
 
    signed long scoreSL = 0;     /*score to return*/
+   signed long bestScoreSL = 0;
 
    /*Get start & end of query and reference sequences*/
    signed char *refSeqStr = 0;
    signed char *qrySeqStr = 0;
 
-   signed long lenRefSL =
+   signed long refLenSL =
       refSTPtr->endAlnSL - refSTPtr->offsetSL + 1;
 
-   signed long lenQrySL =
+   signed long qryLenSL =
       qrySTPtr->endAlnSL - qrySTPtr->offsetSL + 1;
 
    /*Iterators for loops*/
@@ -682,7 +995,7 @@ memwaterScan(
    signed long slQry = 0;
 
    /*****************************************************\
-   * Fun07 Sec01 Sub02:
+   * Fun10 Sec01 Sub02:
    *  - Variables holding the scores (only two rows)
    \*****************************************************/
 
@@ -692,7 +1005,7 @@ memwaterScan(
    signed long nextSnpScoreSL = 0;/*next match/snp score*/
 
    /*****************************************************\
-   * Fun07 Sec01 Sub03:
+   * Fun10 Sec01 Sub03:
    *  - Directional matrix variables
    \*****************************************************/
 
@@ -701,165 +1014,142 @@ memwaterScan(
    signed long snpIndexSL = 0; /*last snp index*/
    signed long tmpIndexSL = 0; /*for getting snp index*/
 
+   /*first query base in scoring array*/
+   signed long startSL = refLenSL;
+
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
-   ^ Fun07 Sec02:
+   ^ Fun10 Sec02:
    ^  - Allocate memory for alignment
-   ^  o fun07 sec02 sub01:
-   ^    - allocate memory for the reference values
-   ^  o fun07 sec02 sub02:
-   ^    - allocate memory for the query values
+   ^  o fun10 sec02 sub01:
+   ^    - get lengths and offsets
+   ^  o fun10 sec02 sub02:
+   ^    - output alignment coodinates memory allocation
+   ^  o fun10 sec02 sub03:
+   ^    - alignment rows memory allocate
    \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
 
    /*****************************************************\
-   * Fun07 Sec02 Sub01:
-   *   - allocate memory for the reference values
+   * Fun10 Sec02 Sub01:
+   *   - get lengths and offsets
    \****************************************************/
 
-   if(alnSTPtr->rowSizeSI < refSTPtr->seqLenSL)
-   { /*If: need more memory for the reference*/
-      if(alnSTPtr->refStartArySL)
-         free(alnSTPtr->refStartArySL);
-      alnSTPtr->refStartArySL =
-         malloc(refSTPtr->seqLenSL * sizeof(signed long));
-      if(! alnSTPtr->refStartArySL)
-         goto memErr_fun07_sec05_sub03;
+   alnSTPtr->refLenSI = refLenSL;
+   alnSTPtr->qryLenSI = qryLenSL;
+   alnSTPtr->refOffsetSI = refSTPtr->offsetSL;
+   alnSTPtr->qryOffsetSI = qrySTPtr->offsetSL;
 
-      if(alnSTPtr->refEndArySL)
-         free(alnSTPtr->refEndArySL);
-      alnSTPtr->refEndArySL =
-         malloc(refSTPtr->seqLenSL * sizeof(signed long));
-      if(! alnSTPtr->refEndArySL)
-         goto memErr_fun07_sec05_sub03;
+   alnSTPtr->outLenSL = refLenSL + qryLenSL;
 
-      if(alnSTPtr->refScoreArySL)
-         free(alnSTPtr->refScoreArySL);
-      alnSTPtr->refScoreArySL =
-         malloc(refSTPtr->seqLenSL * sizeof(signed long));
-      if(! alnSTPtr->refScoreArySL)
-         goto memErr_fun07_sec05_sub03;
+   /*****************************************************\
+   * Fun10 Sec02 Sub02:
+   *   - output alignment coodinates memory allocation
+   \****************************************************/
 
-      if(alnSTPtr->indexArySL)
-         free(alnSTPtr->indexArySL);
-      alnSTPtr->indexArySL =
-         malloc(
-            (refSTPtr->seqLenSL + 1) * sizeof(signed long)
-         );
-      if(! alnSTPtr->indexArySL)
-         goto memErr_fun07_sec05_sub03;
+   if(alnSTPtr->outSizeSL < alnSTPtr->outLenSL)
+   { /*If: need to resize the alignment coordinates*/
+      if(alnSTPtr->startArySL)
+         free(alnSTPtr->startArySL);
+      alnSTPtr->startArySL =
+         malloc(alnSTPtr->outLenSL * sizeof(signed long));
+      if(! alnSTPtr->startArySL)
+         goto memErr_fun10_sec05_sub03;
+
+      if(alnSTPtr->endArySL)
+         free(alnSTPtr->endArySL);
+      alnSTPtr->endArySL =
+         malloc(alnSTPtr->outLenSL * sizeof(signed long));
+      if(! alnSTPtr->endArySL)
+         goto memErr_fun10_sec05_sub03;
 
       if(alnSTPtr->scoreArySL)
          free(alnSTPtr->scoreArySL);
       alnSTPtr->scoreArySL =
-         malloc(
-            (refSTPtr->seqLenSL + 1) * sizeof(signed long)
-         );
+         malloc(alnSTPtr->outLenSL * sizeof(signed long));
       if(! alnSTPtr->scoreArySL)
-         goto memErr_fun07_sec05_sub03;
+         goto memErr_fun10_sec05_sub03;
 
-      if(alnSTPtr->dirArySC)
-         free(alnSTPtr->dirArySC);
-      alnSTPtr->dirArySC =
-         malloc(
-            (refSTPtr->seqLenSL + 1) * sizeof(signed long)
-         );
-      if(! alnSTPtr->dirArySC)
-         goto memErr_fun07_sec05_sub03;
-
-      alnSTPtr->rowSizeSI = refSTPtr->seqLenSL;
-   } /*If: need more memory for the reference*/
+      alnSTPtr->outSizeSL = alnSTPtr->outLenSL;
+   } /*If: need to resize the alignment coordinates*/
 
    /*****************************************************\
-   * Fun07 Sec02 Sub02:
-   *   - allocate memory for the query values
+   * Fun10 Sec02 Sub03:
+   *   - alignment rows memory allocate
    \****************************************************/
 
-   if(alnSTPtr->qrySizeSI < qrySTPtr->seqLenSL)
-   { /*If: need more memory for the query*/
-      if(alnSTPtr->qryStartArySL)
-         free(alnSTPtr->qryStartArySL);
-      alnSTPtr->qryStartArySL =
-         malloc(qrySTPtr->seqLenSL * sizeof(signed long));
-      if(! alnSTPtr->qryStartArySL)
-         goto memErr_fun07_sec05_sub03;
+   if(alnSTPtr->rowSizeSI < refLenSL)
+   { /*If: need more memory for alignment rows*/
+      if(alnSTPtr->indexRowSL)
+         free(alnSTPtr->indexRowSL);
+      alnSTPtr->indexRowSL =
+         malloc((refLenSL + 1) * sizeof(signed long));
+      if(! alnSTPtr->indexRowSL)
+         goto memErr_fun10_sec05_sub03;
 
-      if(alnSTPtr->qryEndArySL)
-         free(alnSTPtr->qryEndArySL);
-      alnSTPtr->qryEndArySL =
-         malloc(qrySTPtr->seqLenSL * sizeof(signed long));
-      if(! alnSTPtr->qryEndArySL)
-         goto memErr_fun07_sec05_sub03;
+      if(alnSTPtr->scoreRowSL)
+         free(alnSTPtr->scoreRowSL);
+      alnSTPtr->scoreRowSL =
+         malloc((refLenSL + 1) * sizeof(signed long));
+      if(! alnSTPtr->scoreRowSL)
+         goto memErr_fun10_sec05_sub03;
 
-      if(alnSTPtr->qryScoreArySL)
-         free(alnSTPtr->qryScoreArySL);
-      alnSTPtr->qryScoreArySL =
-         malloc(qrySTPtr->seqLenSL * sizeof(signed long));
-      if(! alnSTPtr->qryScoreArySL)
-         goto memErr_fun07_sec05_sub03;
+      if(alnSTPtr->dirRowSC)
+         free(alnSTPtr->dirRowSC);
+      alnSTPtr->dirRowSC =
+         malloc((refLenSL + 1) * sizeof(signed long));
+      if(! alnSTPtr->dirRowSC)
+         goto memErr_fun10_sec05_sub03;
 
-      alnSTPtr->qrySizeSI = qrySTPtr->seqLenSL;
-   } /*If: need more memory for the query*/
+      alnSTPtr->rowSizeSI = refLenSL;
+   } /*If: need more memory for alignment rows*/
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
-   ^ Fun07 Sec03:
+   ^ Fun10 Sec03:
    ^  - initialize all values
    \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
 
-   alnSTPtr->refOffsetSI = refSTPtr->offsetSL;
-   alnSTPtr->qryOffsetSI = qrySTPtr->offsetSL;
-
-   alnSTPtr->refLenSI = lenRefSL;
-   alnSTPtr->qryLenSI = lenQrySL;
-
-   for(indexSL = 0; indexSL < lenQrySL; ++indexSL)
+   for(indexSL=0; indexSL < alnSTPtr->outLenSL; ++indexSL)
    { /*loop; till have initalized the query scores*/
-      alnSTPtr->qryStartArySL[indexSL] = -1;
-      alnSTPtr->qryEndArySL[indexSL] = -1;
-      alnSTPtr->qryScoreArySL[indexSL] = -1;
+      alnSTPtr->startArySL[indexSL] = -1;
+      alnSTPtr->endArySL[indexSL] = -1;
+      alnSTPtr->scoreArySL[indexSL] = -1;
    } /*loop; till have initalized the query scores*/
 
-   for(indexSL = 0; indexSL <= lenRefSL; ++indexSL)
+   for(indexSL = 0; indexSL <= refLenSL; ++indexSL)
    { /*loop; till have initalized the first row*/
-      alnSTPtr->dirArySC[indexSL] = def_mvStop_alnDefs;
-      alnSTPtr->indexArySL[indexSL] = indexSL + 1;
-      alnSTPtr->scoreArySL[indexSL] = 0;
-
-      if(indexSL < lenRefSL)
-      { /*If: reference position*/
-         alnSTPtr->refStartArySL[indexSL] = -1;
-         alnSTPtr->refEndArySL[indexSL] = -1;
-         alnSTPtr->refScoreArySL[indexSL] = -1;
-      } /*If: reference position*/
+      alnSTPtr->dirRowSC[indexSL] = def_mvStop_alnDefs;
+      alnSTPtr->indexRowSL[indexSL] = indexSL + 1;
+      alnSTPtr->scoreRowSL[indexSL] = 0;
    } /*loop; till have initalized the first row*/
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
-   ^ Fun07 Sec04:
+   ^ Fun10 Sec04:
    ^  - Fill the matrix with scores
-   ^  o fun07 sec04 sub01:
+   ^  o fun10 sec04 sub01:
    ^    - Final set up before scoring the matrix
-   ^  o fun07 sec04 sub02:
+   ^  o fun10 sec04 sub02:
    ^    - get snp and ins scores + start loop
-   ^  o fun07 sec04 sub03:
+   ^  o fun10 sec04 sub03:
    ^    - find high score
-   ^  o fun07 sec04 sub04:
+   ^  o fun10 sec04 sub04:
    ^    - check if keep score (score > 0)
-   ^  o fun07 sec04 sub05:
+   ^  o fun10 sec04 sub05:
    ^    - find next deletion score and move to next index
-   ^  o fun07 sec04 sub07:
+   ^  o fun10 sec04 sub07:
    ^    - prepare to score the next row in the matrix
    \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
 
    /*****************************************************\
-   * Fun07 Sec04 Sub01:
+   * Fun10 Sec04 Sub01:
    *  - Final set up before scoring the matrix
    \*****************************************************/
 
    /*Move the row of starting indexes to the last row*/
-   alnSTPtr->indexArySL[0] = indexSL;
+   alnSTPtr->indexRowSL[0] = indexSL;
 
    /*These are always negative*/
    delScoreSL = 0;
    nextSnpScoreSL = 0;
-   snpIndexSL = alnSTPtr->indexArySL[0];
+   snpIndexSL = alnSTPtr->indexRowSL[0];
 
    /*incurment to frist base*/
    ++indexSL;
@@ -870,14 +1160,14 @@ memwaterScan(
       */
 
    /*****************************************************\
-   * Fun07 Sec04 Sub02:
+   * Fun10 Sec04 Sub02:
    *  - get snp and ins scores + start loop
    \*****************************************************/
 
    /*Starting on the first sequence row*/
-   for(slQry = 0; slQry < lenQrySL; ++slQry)
+   for(slQry = 0; slQry < qryLenSL; ++slQry)
    { /*loop; compare query base against all ref bases*/
-      for(slRef = 1; slRef <= lenRefSL; ++slRef)
+      for(slRef = 1; slRef <= refLenSL; ++slRef)
       { /*loop; compare one query to one reference base*/
 
          snpScoreSL =
@@ -888,51 +1178,51 @@ memwaterScan(
             ); /*find the score for the base pairs*/
 
          snpScoreSL += nextSnpScoreSL;
-         nextSnpScoreSL = alnSTPtr->scoreArySL[slRef];
+         nextSnpScoreSL = alnSTPtr->scoreRowSL[slRef];
 
          /*insertion score*/
          #ifdef NOEXTEND
             insScoreSL =
-                 alnSTPtr->scoreArySL[slRef]
+                 alnSTPtr->scoreRowSL[slRef]
                + settings->gapSS;
          #else
-            insScoreSL = alnSTPtr->scoreArySL[slRef];
+            insScoreSL = alnSTPtr->scoreRowSL[slRef];
             insScoreSL +=
                settings->insArySS[
-                  alnSTPtr->dirArySC[slRef]
+                  alnSTPtr->dirRowSC[slRef]
                ];
          #endif
 
          /***********************************************\
-         * Fun07 Sec04 Sub03:
+         * Fun10 Sec04 Sub03:
          *   - find high score
          \***********************************************/
 
-         alnSTPtr->scoreArySL[slRef] =
+         alnSTPtr->scoreRowSL[slRef] =
             max_genMath(insScoreSL, snpScoreSL);
             /*find if ins/snp is best (5 Op)*/
 
-         tmpIndexSL = alnSTPtr->indexArySL[slRef];
+         tmpIndexSL = alnSTPtr->indexRowSL[slRef];
 
-         alnSTPtr->indexArySL[slRef] =
+         alnSTPtr->indexRowSL[slRef] =
             ifmax_genMath(
                insScoreSL,
                snpScoreSL,
-               alnSTPtr->indexArySL[slRef], /*ins index*/
+               alnSTPtr->indexRowSL[slRef], /*ins index*/
                snpIndexSL                   /*snp index*/
             ); /*get index of high score*/
 
          snpIndexSL = tmpIndexSL;
 
          /*find direction (5 Op)*/
-         alnSTPtr->dirArySC[slRef] =
-            alnSTPtr->scoreArySL[slRef] > delScoreSL;
-         alnSTPtr->dirArySC[slRef] +=
+         alnSTPtr->dirRowSC[slRef] =
+            alnSTPtr->scoreRowSL[slRef] > delScoreSL;
+         alnSTPtr->dirRowSC[slRef] +=
             (
                  (snpScoreSL <= insScoreSL)
-               & alnSTPtr->dirArySC[slRef]
+               & alnSTPtr->dirRowSC[slRef]
             );
-         ++alnSTPtr->dirArySC[slRef];
+         ++alnSTPtr->dirRowSC[slRef];
 
          /*Logic:
          `   - noDel: maxSC > delSc:
@@ -948,69 +1238,79 @@ memwaterScan(
          */
 
          /*finish finding max's*/
-         alnSTPtr->indexArySL[slRef] =
+         alnSTPtr->indexRowSL[slRef] =
             ifmax_genMath(
                delScoreSL,
-               alnSTPtr->scoreArySL[slRef],
-               alnSTPtr->indexArySL[slRef-1],/*del index*/
-               alnSTPtr->indexArySL[slRef]/*current best*/
+               alnSTPtr->scoreRowSL[slRef],
+               alnSTPtr->indexRowSL[slRef-1],/*del index*/
+               alnSTPtr->indexRowSL[slRef]/*current best*/
             ); /*get index of high score*/
 
-         alnSTPtr->scoreArySL[slRef] =
+         alnSTPtr->scoreRowSL[slRef] =
             max_genMath(
                delScoreSL,
-               alnSTPtr->scoreArySL[slRef]
+               alnSTPtr->scoreRowSL[slRef]
          ); /*find if del is best (5 Op)*/
             
          /***********************************************\
-         * Fun07 Sec04 Sub04:
+         * Fun10 Sec04 Sub04:
          *   - check if keep score (score > 0)
          \***********************************************/
 
-         if(alnSTPtr->scoreArySL[slRef] <= 0)
+         if(alnSTPtr->scoreRowSL[slRef] <= 0)
          {
-            alnSTPtr->dirArySC[slRef] = 0;
-            alnSTPtr->scoreArySL[slRef] = 0;
-            alnSTPtr->indexArySL[slRef] = indexSL + 1;
+            alnSTPtr->dirRowSC[slRef] = 0;
+            alnSTPtr->scoreRowSL[slRef] = 0;
+            alnSTPtr->indexRowSL[slRef] = indexSL + 1;
             /*always one off for new index's*/
             /* branchless method is slower here*/
          }
 
          else
          { /*Else: check if have new high score*/
-            scoreSL = alnSTPtr->scoreArySL[slRef];
+            scoreSL = alnSTPtr->scoreRowSL[slRef];
 
-            if(scoreSL > alnSTPtr->refScoreArySL[slRef-1])
-            { /*If: new best reference position score*/
-               alnSTPtr->refStartArySL[slRef - 1] =
-                   alnSTPtr->indexArySL[slRef];
-               alnSTPtr->refEndArySL[slRef - 1] = indexSL;
-               alnSTPtr->refScoreArySL[slRef-1] = scoreSL;
-            } /*If: new best reference position score*/
+            if(scoreSL > alnSTPtr->scoreArySL[slRef-1])
+            { /*If: new best outerence position score*/
+               alnSTPtr->startArySL[slRef - 1] =
+                   alnSTPtr->indexRowSL[slRef];
+               alnSTPtr->endArySL[slRef - 1] = indexSL;
+               alnSTPtr->scoreArySL[slRef-1] = scoreSL;
 
-            if(scoreSL > alnSTPtr->qryScoreArySL[slQry])
-            { /*If: new best query position score*/
-               alnSTPtr->qryStartArySL[slQry] =
-                   alnSTPtr->indexArySL[slRef];
-               alnSTPtr->qryEndArySL[slQry] = indexSL;
-               alnSTPtr->qryScoreArySL[slQry] = scoreSL;
+               if(scoreSL > bestScoreSL)
+                  bestScoreSL = scoreSL;
+            } /*If: new best outerence position score*/
+
+            if(
+                 scoreSL
+               > alnSTPtr->scoreArySL[slQry+startSL]
+            ){ /*If: new best query position score*/
+               alnSTPtr->startArySL[slQry + startSL] =
+                  alnSTPtr->indexRowSL[slRef];
+               alnSTPtr->endArySL[slQry + startSL] =
+                  indexSL;
+               alnSTPtr->scoreArySL[slQry + startSL] =
+                  scoreSL;
+
+               if(scoreSL > bestScoreSL)
+                  bestScoreSL = scoreSL;
             } /*If: new best query position score*/
          } /*Else: check if have new high score*/
 
          /***********************************************\
-         * Fun07 Sec04 Sub05:
+         * Fun10 Sec04 Sub05:
          *   - find next deletion score and move to next
          \***********************************************/
 
          #ifdef NOEXTEND
             delScoreSL =
-                 alnSTPtr->scoreArySL[slRef]
+                 alnSTPtr->scoreRowSL[slRef]
                + settings->gapSS;
          #else
-            delScoreSL = alnSTPtr->scoreArySL[slRef];
+            delScoreSL = alnSTPtr->scoreRowSL[slRef];
             delScoreSL +=
                settings->delArySS[
-                  alnSTPtr->dirArySC[slRef]
+                  alnSTPtr->dirRowSC[slRef]
                ];
          #endif
 
@@ -1018,7 +1318,7 @@ memwaterScan(
       } /*loop; compare one query to one reference base*/
 
      /***************************************************\
-     *  Fun07 Sec04 Sub07:
+     *  Fun10 Sec04 Sub07:
      *   - prepare for the next round
      \***************************************************/
 
@@ -1026,196 +1326,468 @@ memwaterScan(
 	  nextSnpScoreSL = 0;
      delScoreSL = 0;
 
-     alnSTPtr->indexArySL[0] = indexSL; /*next index*/
-     snpIndexSL = alnSTPtr->indexArySL[0];
+     alnSTPtr->indexRowSL[0] = indexSL; /*next index*/
+     snpIndexSL = alnSTPtr->indexRowSL[0];
 
      ++indexSL; /*Set index for the next base pair*/
    } /*loop; compare query base against all ref bases*/
 
    /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
-   ^ Fun07 Sec05:
+   ^ Fun10 Sec05:
    ^  - set up for returing the matrix (clean up/wrap up)
    \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
 
-   goto cleanUp_fun07_sec05;
+   goto cleanUp_fun10_sec05;
 
-   memErr_fun07_sec05_sub03:;
-      scoreSL = -1;
-      goto cleanUp_fun07_sec05;
+   memErr_fun10_sec05_sub03:;
+      bestScoreSL = -1;
+      goto cleanUp_fun10_sec05;
 
-   cleanUp_fun07_sec05:;
-      return scoreSL;
+   cleanUp_fun10_sec05:;
+      return bestScoreSL;
 } /*memwaterScan*/
 
-#ifdef NEW_DEBUG
 /*-------------------------------------------------------\
-| Fun08: trsGetLongest_memwaterScan
-|   - find longest trs (tandum repeat sequence) repeat
+| Fun11: simple_memwaterScan
+|   - performs a memory efficent Smith Waterman scan
+|     (keep best alignment for each query/reference base)
+|     alignment on a pair of sequences
+|   - simple means no settings or seqST structure used and
+|     no match matrix
 | Input;
-|   - readSTPtr:
-|     o pointer to an seqST with the read to scan for trs
-|       index 0 coordinates to start (offsetSL)/end
-|       (endAlnSL) the alignment.
-|   - trsSeqSTPtr:
-|     o pointer to an seqST with the reference sequence
-|       and index 0 coordinates to start (offsetSL)/end
-|       (endAlnSL) the alignment.
-|   - startSIPtr:
-|     o signed int pionter set to 1st reference base in
-|       the trs
-|   - endSIPtr:
-|     o signed int pionter set to last reference base in
-|       the trs
+|   - qrySeqStr:
+|     o c-string with query sequence
+|   - qryLenSI:
+|     o length of qrySeqStr (index 1)
+|   - refSeqStr:
+|     o c-string with reference sequence
+|   - refLenSI:
+|     o length of refSeqStr (index 1)
 |   - alnSTPtr:
 |     o pointer to aln_memwaterScan structure to hold the
-|       results of the alignment (and used to align)
-|   - settings:
-|     o pointer to an alnSet structure with the gap open,
-|       gap extend, and scoring matrix for the alingment
+|       results of the alignment
 | Output:
 |  - Modifies:
 |    o variables in alnSTPtr to have the new alignment
-|    o startSIPtr to have the 1st reference coorindate in
-|      the longest found tandum repeat sequence
-|    o endSIPtr to have the 1st reference coorindate in
-|      the longest found tandum repeat sequence
 |  - Returns:
-|    o score of longest trs
+|    o score of the best alignment found
 |    o negative number for memory errors
 \-------------------------------------------------------*/
 signed long
-trsGetLongest_memwaterScan(
-   struct seqST *readSTPtr, /*read/sequence to scan*/
-   struct seqST *trsSTPtr,  /*ref sequence and data*/
-   signed int *startSIPtr,  /*gets start of longest map*/
-   signed int *endSIPtr,    /*gets end of longest map*/
-   struct aln_memwaterScan *alnSTPtr,/*gets alignment*/
-   struct alnSet *settings
-){
-   signed long scoreSL = 0;
+simple_memwaterScan(
+   signed char *qrySeqStr,   /*query sequence*/
+   signed int qryLenSI,      /*length of query sequence*/
+   signed char *refSeqStr,   /*reference sequence*/
+   signed int refLenSI,      /*reference sequence length*/
+   struct aln_memwaterScan *alnSTPtr /*gets alignment*/
+){ /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\
+   ' Fun11 TOC: simple_memwaterScan
+   '   - performs a memory efficent Smith Waterman scan
+   '     (keep best alignment for each query/reference
+   '     base) alignment on a pair of sequences
+   '   - simple means no settings or seqST structure used
+   '     and no match matrix
+   '  o fun11 sec01:
+   '    - Variable declerations
+   '  o fun11 sec02:
+   '    - Allocate memory for alignment
+   '  o fun11 sec03:
+   '    - Fill in initial negatives for ref
+   '  o fun0 sec04:
+   '    - Fill the matrix with scores
+   '  o fun11 sec05:
+   '    - Set up for returing matrix (clean up/wrap up)
+   \~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
-   unsigned long refCoordAryUL[2]; /*0 = start; 1 = end*/
-   unsigned long qryCoordAryUL[2]; /*0 = start; 1 = end*/
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun11 Sec01: Variable declerations
+   ^  o fun11 sec01 sub01:
+   ^    - Variables dealing with the query and reference
+   ^      starting positions
+   ^  o fun11 sec01 sub02:
+   ^    - Variables holding the scores (only two rows)
+   ^  o fun11 sec01 sub03:
+   ^    - Directinol matrix variables
+   ^  o fun11 sec01 sub04:
+   ^    - Variables for building returend alignment array
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
 
-   unsigned long lastRefCoordAryUL[2];/*0=start; 1=end*/
-   unsigned long lastQryCoordAryUL[2];/*0=start; 1=end*/
- 
-   signed int trsLenSI = 0;
-   signed int indexSI = 0;
-   signed int nextSI = 0;
-   signed int qryNextSI = 0;
-   signed int endSI = 0;
-   signed short gapSS = trsSTPtr->seqLenUL / 10;
-      /*limits to a 10% gap*/
+   /*****************************************************\
+   * Fun11 Sec01 Sub01:
+   *  - Variables dealing with the query and reference
+   *    starting positions
+   \*****************************************************/
 
-   signed short indelSS = trsSTPtr->seqLenUL / 10;
-      /*limits for gaps between bases*/
+   signed long scoreSL = 0;     /*holds score*/
+   signed long bestScoreSL = 0; /*score to return*/
 
-   *startSIPtr = 0;
-   *endSIPtr = 0;
+   /*Iterators for loops*/
+   signed int siRef = 0;
+   signed int siQry = 0;
 
-   scoreSL =
-      memwaterScan(readSTPtr,trsSTPtr,alnSTPtr,settings);
-   if(scoreSL < 0)
-      goto memErr_fun08_sec0x;
+   /*****************************************************\
+   * Fun11 Sec01 Sub02:
+   *  - Variables holding the scores (only two rows)
+   \*****************************************************/
 
-   for(indexSI=0; indexSI < alnSTPtr->refLenSI; ++indexSI)
-      alnSTPtr->scoreArySL[indexSI] = 0;
+   signed long snpScoreSL = 0;
+   signed long insScoreSL = 0;
+   signed long delScoreSL = 0;   /*score for deletion*/
+   signed long nextSnpScoreSL = 0;/*next match/snp score*/
 
-   for(indexSI=0; indexSI < alnSTPtr->refLenSI; ++indexSI)
-   { /*Loop: find longest length*/
-      if(
-           settings->minScoreSL
-         < alnSTPtr->qryScoreSL[indexSI]
-      ){ /*If: no valid score*/
-         alnSTPtr->scoreArySL[indexSI] = -2;
-         continue;
-      }  /*If: no valid score*/
+   /*****************************************************\
+   * Fun11 Sec01 Sub03:
+   *  - Directional matrix variables
+   \*****************************************************/
 
-      indexToCoord(
-         alnSTPtr->refLenSI,
-         alnSTPtr->qryStartArySL[indexSI],
-         &lastRefCoordAryUL[0],
-         &lastQryCoordAryUL[0]
-      );
+   /*Keeping track of alignment starting positions*/
+   signed long indexSL = 0;    /*index at in matrix*/
+   signed long snpIndexSL = 0; /*last snp index*/
+   signed long tmpIndexSL = 0; /*for getting snp index*/
 
-      indexToCoord(
-         alnSTPtr->refLenSI,
-         alnSTPtr->qryEndArySL[indexSI],
-         &lastRefCoordAryUL[1],
-         &lastQryCoordAryUL[1]
-      );
+   /*first query base in scoring array*/
+   signed long startSL = refLenSI;
 
-      trsLenSI =
-         lastRefCoordAryUL[1] - lastRefCoordAryUL[0];
-      nextSI = lastRefCoordAryUL[1] + 1;
-      endSI = nextSI + gapSS;
+   signed int insArySI[4];
+   signed int delArySI[4];
 
-      while(nextSI <= endSI)
-      { /*Loop: see if can extend trs*/
-         indexToCoord(
-            alnSTPtr->refLenSI,
-            alnSTPtr->qryStartArySL[indexSI],
-            &refCoordAryUL[0],
-            &qryCoordAryUL[0]
-         );
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun11 Sec02:
+   ^  - Allocate memory for alignment
+   ^  o fun11 sec02 sub01:
+   ^    - get lengths and offsets
+   ^  o fun11 sec02 sub02:
+   ^    - output alignment coodinates memory allocation
+   ^  o fun11 sec02 sub03:
+   ^    - alignment rows memory allocate
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
 
-         indexToCoord(
-            alnSTPtr->refLenSI,
-            alnSTPtr->qryEndArySL[indexSI],
-            &refCoordAryUL[1],
-            &qryCoordAryUL[1]
-         );
+   /*****************************************************\
+   * Fun11 Sec02 Sub01:
+   *   - get lengths and offsets
+   \****************************************************/
 
-         if(
-                (signed long) refCoordAryUL[0]
-              - lastRefCoordUL[0]
-            > gapUS
-         ){ /*If: end of the repeat*/
-            alnSTPtr->scoreArySL[indexSI] = trsLenSI;
+   alnSTPtr->refLenSI = refLenSI;
+   alnSTPtr->qryLenSI = qryLenSI;
+   alnSTPtr->refOffsetSI = 0;
+   alnSTPtr->qryOffsetSI = 0;
 
-            nextSI = lastRefCoordAry[0] + 1;
-            qryNextSI = lastQryCoordAry[0] + 1;
-            while(nextSI < lastRefCoordAry[1])
-            { /*Loop: fill in duplicate entries*/
-               indexToCoord(
-                  alnSTPtr->refLenSI,
-                  alnSTPtr->qryStartArySL[indexSI],
-                  &refCoordAryUL[0],
-                  &qryCoordAryUL[0]
-               );
+   alnSTPtr->outLenSL = refLenSI + qryLenSI;
 
-               if(qryCoordAryUL[0] < qryNextSI - indelSS)
-                  ;
-               else if(
-                  qryCoordAryUL[0] > qryNextSI + indelSS
-               ) ;
-               else
-                  alnSTPtr->scoreArySL[nextSI] = -1;
+   insArySI[def_mvStop_alnDefs] = def_gapOpen_alnDefs;
+   insArySI[def_mvDel_alnDefs] = def_gapOpen_alnDefs;
+   insArySI[def_mvSnp_alnDefs] = def_gapOpen_alnDefs;
+   insArySI[def_mvIns_alnDefs] = def_gapExtend_alnDefs;
 
-               ++nextSI;
-               ++qryNextSI;
-            } /*Loop: fill in duplicate entries*/
+   delArySI[def_mvStop_alnDefs] = def_gapOpen_alnDefs;
+   delArySI[def_mvDel_alnDefs] = def_gapExtend_alnDefs;
+   delArySI[def_mvSnp_alnDefs] = def_gapOpen_alnDefs;
+   delArySI[def_mvIns_alnDefs] = def_gapOpen_alnDefs;
 
-            break;
-         } /*If: end of the repeat*/
+   /*****************************************************\
+   * Fun11 Sec02 Sub02:
+   *   - output alignment coodinates memory allocation
+   \****************************************************/
 
-         else if(
-            qryCoordAryUL[0] - lastEndAryUL[1] > gapUS
-         ){ /*Else If: end of the repeat*/
-         } /*Else If: end of the repeat*/
+   if(alnSTPtr->outSizeSL < alnSTPtr->outLenSL)
+   { /*If: need to resize the alignment coordinates*/
+      if(alnSTPtr->startArySL)
+         free(alnSTPtr->startArySL);
+      alnSTPtr->startArySL =
+         malloc(alnSTPtr->outLenSL * sizeof(signed long));
+      if(! alnSTPtr->startArySL)
+         goto memErr_fun11_sec05_sub03;
 
-      } /*Loop: see if can extend trs*/
+      if(alnSTPtr->endArySL)
+         free(alnSTPtr->endArySL);
+      alnSTPtr->endArySL =
+         malloc(alnSTPtr->outLenSL * sizeof(signed long));
+      if(! alnSTPtr->endArySL)
+         goto memErr_fun11_sec05_sub03;
 
-      curStartSI = 
-   } /*Loop: find longest length*/
+      if(alnSTPtr->scoreArySL)
+         free(alnSTPtr->scoreArySL);
+      alnSTPtr->scoreArySL =
+         malloc(alnSTPtr->outLenSL * sizeof(signed long));
+      if(! alnSTPtr->scoreArySL)
+         goto memErr_fun11_sec05_sub03;
 
-   return scoreSL;
+      alnSTPtr->outSizeSL = alnSTPtr->outLenSL;
+   } /*If: need to resize the alignment coordinates*/
 
-   memErr_fun08_sec0x:;
-      return scoreSL;
-} /*trsGetLongest_memwaterScan*/
-#endif
+   /*****************************************************\
+   * Fun11 Sec02 Sub03:
+   *   - alignment rows memory allocate
+   \****************************************************/
+
+   if(alnSTPtr->rowSizeSI < refLenSI)
+   { /*If: need more memory for alignment rows*/
+      if(alnSTPtr->indexRowSL)
+         free(alnSTPtr->indexRowSL);
+      alnSTPtr->indexRowSL =
+         malloc((refLenSI + 1) * sizeof(signed long));
+      if(! alnSTPtr->indexRowSL)
+         goto memErr_fun11_sec05_sub03;
+
+      if(alnSTPtr->scoreRowSL)
+         free(alnSTPtr->scoreRowSL);
+      alnSTPtr->scoreRowSL =
+         malloc((refLenSI + 1) * sizeof(signed long));
+      if(! alnSTPtr->scoreRowSL)
+         goto memErr_fun11_sec05_sub03;
+
+      if(alnSTPtr->dirRowSC)
+         free(alnSTPtr->dirRowSC);
+      alnSTPtr->dirRowSC =
+         malloc((refLenSI + 1) * sizeof(signed long));
+      if(! alnSTPtr->dirRowSC)
+         goto memErr_fun11_sec05_sub03;
+
+      alnSTPtr->rowSizeSI = refLenSI;
+   } /*If: need more memory for alignment rows*/
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun11 Sec03:
+   ^  - initialize all values
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   for(indexSL=0; indexSL < alnSTPtr->outLenSL; ++indexSL)
+   { /*loop; till have initalized the query scores*/
+      alnSTPtr->startArySL[indexSL] = -1;
+      alnSTPtr->endArySL[indexSL] = -1;
+      alnSTPtr->scoreArySL[indexSL] = -1;
+   } /*loop; till have initalized the query scores*/
+
+   for(indexSL = 0; indexSL <= refLenSI; ++indexSL)
+   { /*loop; till have initalized the first row*/
+      alnSTPtr->dirRowSC[indexSL] = def_mvStop_alnDefs;
+      alnSTPtr->indexRowSL[indexSL] = indexSL + 1;
+      alnSTPtr->scoreRowSL[indexSL] = 0;
+   } /*loop; till have initalized the first row*/
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun11 Sec04:
+   ^  - Fill the matrix with scores
+   ^  o fun11 sec04 sub01:
+   ^    - Final set up before scoring the matrix
+   ^  o fun11 sec04 sub02:
+   ^    - get snp and ins scores + start loop
+   ^  o fun11 sec04 sub03:
+   ^    - find high score
+   ^  o fun11 sec04 sub04:
+   ^    - check if keep score (score > 0)
+   ^  o fun11 sec04 sub05:
+   ^    - find next deletion score and move to next index
+   ^  o fun11 sec04 sub07:
+   ^    - prepare to score the next row in the matrix
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   /*****************************************************\
+   * Fun11 Sec04 Sub01:
+   *  - Final set up before scoring the matrix
+   \*****************************************************/
+
+   /*Move the row of starting indexes to the last row*/
+   alnSTPtr->indexRowSL[0] = indexSL;
+
+   /*These are always negative*/
+   delScoreSL = 0;
+   nextSnpScoreSL = 0;
+   snpIndexSL = alnSTPtr->indexRowSL[0];
+
+   /*incurment to frist base*/
+   ++indexSL;
+   --refSeqStr;
+      /*offseting reference by 1 to account for the gap
+      `  column
+      */
+
+   /*****************************************************\
+   * Fun11 Sec04 Sub02:
+   *  - get snp and ins scores + start loop
+   \*****************************************************/
+
+   /*Starting on the first sequence row*/
+   for(siQry = 0; siQry < qryLenSI; ++siQry)
+   { /*loop; compare query base against all ref bases*/
+      for(siRef = 1; siRef <= refLenSI; ++siRef)
+      { /*loop; compare one query to one reference base*/
+
+         snpScoreSL =
+              def_matchScore_alnDefs
+            - (
+               (
+                    def_matchScore_alnDefs
+                  - def_snpScore_alnDefs
+               ) & -(
+                          (qrySeqStr[siQry] & ~32)
+                       != (refSeqStr[siRef] & ~32)
+                    )
+            );
+
+         snpScoreSL += nextSnpScoreSL;
+         nextSnpScoreSL = alnSTPtr->scoreRowSL[siRef];
+
+         /*insertion score*/
+         #ifdef NOEXTEND
+            insScoreSL =
+              scoreHeapArySL[siRef] + def_gapOpen_alnDefs;
+         #else
+            insScoreSL =
+                 alnSTPtr->scoreRowSL[siRef]
+               + insArySI[alnSTPtr->dirRowSC[siRef]];
+         #endif
+
+         /***********************************************\
+         * Fun11 Sec04 Sub03:
+         *   - find high score
+         \***********************************************/
+
+         alnSTPtr->scoreRowSL[siRef] =
+            max_genMath(insScoreSL, snpScoreSL);
+            /*find if ins/snp is best (5 Op)*/
+
+         tmpIndexSL = alnSTPtr->indexRowSL[siRef];
+
+         alnSTPtr->indexRowSL[siRef] =
+            ifmax_genMath(
+               insScoreSL,
+               snpScoreSL,
+               alnSTPtr->indexRowSL[siRef], /*ins index*/
+               snpIndexSL                   /*snp index*/
+            ); /*get index of high score*/
+
+         snpIndexSL = tmpIndexSL;
+
+         /*find direction (5 Op)*/
+         alnSTPtr->dirRowSC[siRef] =
+            alnSTPtr->scoreRowSL[siRef] > delScoreSL;
+         alnSTPtr->dirRowSC[siRef] +=
+            (
+                 (snpScoreSL <= insScoreSL)
+               & alnSTPtr->dirRowSC[siRef]
+            );
+         ++alnSTPtr->dirRowSC[siRef];
+
+         /*Logic:
+         `   - noDel: maxSC > delSc:
+         `     o 1 if deletion not max score
+         `     o 0 if deletion is max score
+         `   - type: noDel + ((snpSc < insSc) & noDel):
+         `     o 1 + (1 & 1) = 2 if insertion is maximum
+         `     o 1 + (0 & 1) = 1 if snp is maximum
+         `     o 0 + (0 & 0) = 0 if del is max; snp > ins
+         `     o 0 + (1 & 0) = 0 if del is max, ins >= snp
+         `   - dir: type + 1
+         `     o adds 1 to change from stop to direction
+         */
+
+         /*finish finding max's*/
+         alnSTPtr->indexRowSL[siRef] =
+            ifmax_genMath(
+               delScoreSL,
+               alnSTPtr->scoreRowSL[siRef],
+               alnSTPtr->indexRowSL[siRef-1],/*del index*/
+               alnSTPtr->indexRowSL[siRef]/*current best*/
+            ); /*get index of high score*/
+
+         alnSTPtr->scoreRowSL[siRef] =
+            max_genMath(
+               delScoreSL,
+               alnSTPtr->scoreRowSL[siRef]
+         ); /*find if del is best (5 Op)*/
+            
+         /***********************************************\
+         * Fun11 Sec04 Sub04:
+         *   - check if keep score (score > 0)
+         \***********************************************/
+
+         if(alnSTPtr->scoreRowSL[siRef] <= 0)
+         {
+            alnSTPtr->dirRowSC[siRef] = 0;
+            alnSTPtr->scoreRowSL[siRef] = 0;
+            alnSTPtr->indexRowSL[siRef] = indexSL + 1;
+            /*always one off for new index's*/
+            /* branchless method is slower here*/
+         }
+
+         else
+         { /*Else: check if have new high score*/
+            scoreSL = alnSTPtr->scoreRowSL[siRef];
+
+            if(scoreSL > alnSTPtr->scoreArySL[siRef - 1])
+            { /*If: new best outerence position score*/
+               alnSTPtr->startArySL[siRef - 1] =
+                   alnSTPtr->indexRowSL[siRef];
+               alnSTPtr->endArySL[siRef - 1] = indexSL;
+               alnSTPtr->scoreArySL[siRef-1] = scoreSL;
+
+               if(scoreSL > bestScoreSL)
+                  bestScoreSL = scoreSL;
+            } /*If: new best outerence position score*/
+
+            if(
+                 scoreSL
+               > alnSTPtr->scoreArySL[siQry + startSL]
+            ){ /*If: new best query position score*/
+               alnSTPtr->startArySL[siQry + startSL] =
+                  alnSTPtr->indexRowSL[siRef];
+               alnSTPtr->endArySL[siQry + startSL] =
+                  indexSL;
+               alnSTPtr->scoreArySL[siQry + startSL] =
+                  scoreSL;
+
+               if(scoreSL > bestScoreSL)
+                  bestScoreSL = scoreSL;
+            } /*If: new best query position score*/
+         } /*Else: check if have new high score*/
+
+         /***********************************************\
+         * Fun11 Sec04 Sub05:
+         *   - find next deletion score and move to next
+         \***********************************************/
+
+         #ifdef NOEXTEND
+            delScoreSL =
+              scoreHeapArySL[siRef] + def_gapOpen_alnDefs;
+         #else
+            delScoreSL =
+                 alnSTPtr->scoreRowSL[siRef]
+               + delArySI[alnSTPtr->dirRowSC[siRef]];
+         #endif
+
+         ++indexSL;
+      } /*loop; compare one query to one reference base*/
+
+     /***************************************************\
+     *  Fun11 Sec04 Sub07:
+     *   - prepare for the next round
+     \***************************************************/
+
+     /*Get scores set up for the gap column*/
+	  nextSnpScoreSL = 0;
+     delScoreSL = 0;
+
+     alnSTPtr->indexRowSL[0] = indexSL; /*next index*/
+     snpIndexSL = alnSTPtr->indexRowSL[0];
+
+     ++indexSL; /*Set index for the next base pair*/
+   } /*loop; compare query base against all ref bases*/
+
+   /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\
+   ^ Fun11 Sec05:
+   ^  - set up for returing the matrix (clean up/wrap up)
+   \<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<*/
+
+   goto cleanUp_fun11_sec05;
+
+   memErr_fun11_sec05_sub03:;
+      bestScoreSL = -1;
+      goto cleanUp_fun11_sec05;
+
+   cleanUp_fun11_sec05:;
+      return bestScoreSL;
+} /*simple_memwaterScan*/
 
 /*=======================================================\
 : License:

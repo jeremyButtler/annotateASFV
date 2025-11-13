@@ -91,6 +91,15 @@ The `ifNullDelim_ulCp()` looks to see if null or the
   of the string. The string should be in the from of an
   ulong\_ulCp datatype.
 
+For every `if<check>_ulCp` macro there is
+  a `<check>ToNeg_ulCp` macro. The `if<check>_ulCp` macro
+  returns 0 if the character(s) were not found, while
+  the `<check>ToNeg_ulCp` macro returns the value, but
+  with the `<check>` value set to a negative number and
+  the other characters set to a positive number. It is
+  of it as the `if<check>_ulCp`, but without the highbit
+  removal step.
+
 - Input:
   - c-string as a ulong\_ulCp pointer to check
   - deliminator (as ulong\_ulCp data type) to look for

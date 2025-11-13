@@ -18,15 +18,28 @@
 '   o fun05: getCoord_aln_memwaterScan
 '     - gets the coordinates for input base index for an
 '       aln_memwaterScan structure
-'   o fun06: qryByRefSort_aln_memwaterScan
-'     - sorts the query coordinates in a aln_memwaterScan
-'       structure by the reference coordinate
-'     - the sorting is first smallest query state, then
-'       highest score, then longest (ending base) length
-'   o fun07 memwaterScan:
+'   o fun07: refCoordSort_aln_memwaterScan
+'     - sorts best bases alignments by reference start,
+'       query start, reference end (closest first), then
+'       and query end (closest first)
+'     - all negatives (non-alignment found) are pushed to
+'       the end
+'   o fun08: filter_memwaterScan
+'     - removes low scoring alignments and alignments that
+'       are nested alignments
+'   o fun09: merge_aln_memwaterScan
+'     - merges one aln_memwaterScan struct into another
+'       aln_memwaterScan struct
+'   o fun10 memwaterScan:
 '     - performs a memory efficent Smith Waterman scan
 '       (keep best alignment for each query/reference base)
 '       alignment on a pair of sequences
+'   o fun11: simple_memwaterScan
+'     - performs a memory efficent Smith Waterman scan
+'       (keep best alignment for each query/reference
+'       base) alignment on a pair of sequences
+'     - simple means no settings or seqST structure used
+'       and no match matrix
 '   o license:
 '     - licensing for this code (public domain / mit)
 \~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
@@ -61,34 +74,26 @@ typedef struct aln_memwaterScan
    /*alignment coordiantes (has both reference and query
    `   coordiantes, convert to individual coordinates with
    `   seqToIndex) of the best alignment for each
-   `   reference base
-   ` Also the best score for each reference base
+   `   reference (0 to refLenSI - 1) and query
+   `   (refLenSI to refLenSI + qryLen - 1)
+   `   base
+   ` Also the best scores for each bases alignment
    */
-   signed long *refStartArySL;
-   signed long *refEndArySL;
-   signed long *refScoreArySL;
+   signed long *startArySL;
+   signed long *endArySL;
+   signed long *scoreArySL;
+   signed long outSizeSL;
+   signed long outLenSL;
 
-   /*alignment coordiantes (has both reference and query
-   `   coordiantes, convert to individual coordinates with
-   `   seqToIndex) of the best alignment for each
-   `   query base
-   ` Also the best score for each query base
-   */
-   signed long *qryStartArySL;
-   signed long *qryEndArySL;
-   signed long *qryScoreArySL;
-   signed int qrySizeSI; /*maxiumum bases in query before
-                         `  need to do a resize
-                         */
    /*general variables used by memwaterScan and its
    `  supporting functions
    */
-   signed long *scoreArySL; /*scoring row*/
-   signed long *indexArySL; /*start index of each row*/
-   signed char *dirArySC;   /*direction row*/
+   signed long *scoreRowSL; /*scoring row*/
+   signed long *indexRowSL; /*start index of each row*/
+   signed char *dirRowSC;   /*direction row*/
    signed int rowSizeSI;    /*maximum bytes before need to
-                            `  resize scoreArySL,
-                            `  indexArySL, dirArySC,
+                            `  resize scoreRowSL,
+                            `  indexRowSL, dirRowSC,
                             `  refStartArySL, refEndArySL,
                             `  and refScoreArySL
                             */
@@ -165,9 +170,6 @@ freeHeap_aln_memwaterScan(
 | Input:
 |   - baseSI:
 |     o base to get coordinates for
-|   - qryBl:
-|     o 1 if index is for the query array
-|     o 0 if index is for the reference array
 |   - refStartSIPtr:
 |     o signed int pointer that gets the reference start
 |   - refEndSIPtr:
@@ -180,16 +182,18 @@ freeHeap_aln_memwaterScan(
 |     o aln_memwaterScan struct pointer with coordinates
 | Output:
 |   - Modifies:
-|     o frees alnSTPtr; you must set the pointer to 0/null
+|     o refStartSIPtr to have reference starting position
+|     o refEndSIPtr to have reference ending position
+|     o qryStartSIPtr to have query starting position
+|     o qryEndSIPtr to have query ending position
 |   - Returns:
-|     o 0 for success
-|     o 1 if no position at index
+|     o score for success
+|     o 0 if no position at index
 |     o -1 for out of bounds error
 \-------------------------------------------------------*/
 signed char
 getCoord_aln_memwaterScan(
-   signed int baseSI,
-   signed char qryBl,         /*1: get from query array*/
+   signed long baseSL,        /*index to grab*/
    signed int *refStartSIPtr, /*gets reference start*/
    signed int *refEndSIPtr,   /*gets reference end*/
    signed int *qryStartSIPtr, /*gets query start*/
@@ -198,11 +202,34 @@ getCoord_aln_memwaterScan(
 );
 
 /*-------------------------------------------------------\
-| Fun06: qryByRefSort_aln_memwaterScan
-|   - sorts the query coordinates in a aln_memwaterScan
-|     structure by the reference coordinate
-|   - the sorting is first smallest query state, then
-|     highest score, then longest (ending base) length
+| Fun06: swap_memwaterScan
+|   - swaps position in reference array
+| Input:
+|   - alnSTPtr:
+|     o aln_memwaterScan struct pointer to swap positions
+|   - firstSI:
+|     o first index to swap
+|   - secSI:
+|     o second index to swap
+| Output:
+|   - Modifies:
+|     o scoreArySL, startArySL, endArySL in alnSTPtr to
+|       have firstSI and secSI index's swapped
+\-------------------------------------------------------*/
+void
+swap_memwaterScan(
+   struct aln_memwaterScan *alnSTPtr,
+   signed int firstSI,
+   signed int secSI
+);
+
+/*-------------------------------------------------------\
+| Fun07: refCoordSort_aln_memwaterScan
+|   - sorts best bases alignments by reference start,
+|     query start, reference end (closest first), then
+|     and query end (closest first)
+|   - all negatives (non-alignment found) are pushed to
+|     the end
 | Input:
 |   - alnSTPtr:
 |     o aln_memwaterScan struct pionter to sort
@@ -214,12 +241,70 @@ getCoord_aln_memwaterScan(
 |       kept in sync with qryStartArySL
 \-------------------------------------------------------*/
 void
-qryByRefSort_aln_memwaterScan(
+refCoordSort_aln_memwaterScan(
    struct aln_memwaterScan *alnSTPtr
 );
 
 /*-------------------------------------------------------\
-| Fun07: memwaterScan
+| Fun08: filter_memwaterScan
+|   - removes low scoring alignments and alignments that
+|     are nested alignments
+| Input:
+|   - alnSTPtr:
+|     o pointer to aln_memwaterScan struct with alignments
+|       to filter
+|   - minScoreSL:
+|     o minimum score for an alignment
+|   - minScoreTwoSL:
+|     o second minimum score for an alignment
+|       * use when you are putting a percent minimum score
+|         for minScoreSL
+|       * allows for a hard cutoff and a percent cuttoff
+| Output:
+|   - Modifies:
+|     o startArySL, endArySL, and scoreArySL in alnSTPtr
+|       to only have high scoring, non-nested alignments
+|     o outLenSL to have the new number of alignments
+|   - Returns:
+|     o number of kept alignments
+\-------------------------------------------------------*/
+signed long
+filter_memwaterScan(
+   struct aln_memwaterScan *alnSTPtr,
+   signed long minScoreSL,
+   signed long minScoreTwoSL
+);
+
+/*-------------------------------------------------------\
+| Fun09: merge_aln_memwaterScan
+|   - merges one aln_memwaterScan struct into another
+|     aln_memwaterScan struct
+| Input:
+|   - mergeSTPtr:
+|     o aln_memwaterScan struct to merge into the final
+|       structure
+|   - outSTPtr:
+|     o aln_memwaterScan struct to merge mergeSTPtr into
+|   - minScoreSL:
+|     o minumum score to keep score in mergeSTPtr
+| Output:
+|   - Modifies:
+|     o variables in outSTPtr to include variables in
+|       mergeSTPtr and outSTPtr
+|   - Returns:
+|     o 0 for success
+|     o -1 if reference lengths differ (no way to merge)
+|     o -2 for memory errors
+\-------------------------------------------------------*/
+signed char
+merge_aln_memwaterScan(
+   struct aln_memwaterScan *mergeSTPtr,
+   struct aln_memwaterScan *outSTPtr,
+   signed long minScoreSL
+);
+
+/*-------------------------------------------------------\
+| Fun10: memwaterScan
 |   - performs a memory efficent Smith Waterman scan
 |     (keep best alignment for each query/reference base)
 |     alignment on a pair of sequences
@@ -251,6 +336,41 @@ memwaterScan(
    struct seqST *refSTPtr, /*ref sequence and data*/
    struct aln_memwaterScan *alnSTPtr,/*gets alignment*/
    struct alnSet *settings
+);
+
+/*-------------------------------------------------------\
+| Fun11: simple_memwaterScan
+|   - performs a memory efficent Smith Waterman scan
+|     (keep best alignment for each query/reference base)
+|     alignment on a pair of sequences
+|   - simple means no settings or seqST structure used and
+|     no match matrix
+| Input;
+|   - qrySeqStr:
+|     o c-string with query sequence
+|   - qryLenSI:
+|     o length of qrySeqStr (index 1)
+|   - refSeqStr:
+|     o c-string with reference sequence
+|   - refLenSI:
+|     o length of refSeqStr (index 1)
+|   - alnSTPtr:
+|     o pointer to aln_memwaterScan structure to hold the
+|       results of the alignment
+| Output:
+|  - Modifies:
+|    o variables in alnSTPtr to have the new alignment
+|  - Returns:
+|    o score for aligment
+|    o negative number for memory errors
+\-------------------------------------------------------*/
+signed long
+simple_memwaterScan(
+   signed char *qrySeqStr,   /*query sequence*/
+   signed int lenQrySI,      /*length of query sequence*/
+   signed char *refSeqStr,   /*reference sequence*/
+   signed int lenRefSI,      /*reference sequence length*/
+   struct aln_memwaterScan *alnSTPtr /*gets alignment*/
 );
 
 #endif

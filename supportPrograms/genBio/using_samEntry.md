@@ -110,6 +110,11 @@ To setup a samEntry structure use setup\_samEntry (fun03
   returns 0 for no errors and memErr\_samEntry for memory
   errors.
 
+**As of 2025-11-10, you no longer need to use setup if you
+  are calling `get_samEntry()` or `lineTo_samEntry()`.
+  These functions will detect if setup has been done and
+  if not, call setup.**
+
 You can skip these two steps by using makeSamEntry (fun06
   samEntry.c/h). It returns 0 for memory error or a
   pointer to a initialized and setup heap allocated
